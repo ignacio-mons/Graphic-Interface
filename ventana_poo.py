@@ -212,20 +212,6 @@ class Shell:
 
         return "--"
 
-    def obtener_neto(self):
-        if self.comando.ser and self.comando.ser.is_open:
-            try:
-                self.comando.send("SN")
-                lecture = self.comando.answer()
-                partes = lecture.split()
-
-                if len(lecture) >= 4:
-                    return f"{partes[2]} {partes[3]}"
-                return "0.0"
-            except Exception as e:
-                return f"Error {e}"
-        return "---"
-
 
 class Window(ctk.CTk):
     """
@@ -242,7 +228,7 @@ class Window(ctk.CTk):
         self.val_tara = 0
 
         # ---------------------------
-        self.peso_maximo = 59000
+        self.peso_maximo = 58000
         self.alerta_peso_maximo = False
         # ---------------------------
 
@@ -273,10 +259,10 @@ class Window(ctk.CTk):
         self.style_table.theme_use("clam")
         self.style_table.configure(
             "Treeview",
-            background="#DCE8F5",
+            background="#BD9D9D",
             foreground="black",
             rowheight=25,
-            fieldbackground="#EDEBEB",
+            fieldbackground="#DFF2F5",
             font=("Cambria", 10),
         )
 
@@ -310,6 +296,7 @@ class Window(ctk.CTk):
             width=3,
             height=20,
             corner_radius=20,
+            border_color="white",
             command=self.registrar_peso,
             image=icon_registro,
             compound="top",
@@ -340,6 +327,7 @@ class Window(ctk.CTk):
             width=3,
             corner_radius=20,
             border_width=1,
+            border_color="white",
             command=self.save_xsc,
             image=icon_save,
             compound="top",
@@ -360,25 +348,13 @@ class Window(ctk.CTk):
             height=20,
             corner_radius=20,
             border_width=1,
+            border_color="white",
             command=self.limpiar,
             image=icon_new,
             compound="top",
         )
         self.button_nuevo.pack(side="left", expand=True)
         # -------------------------------------------------
-        # self.button_eliminar = ctk.CTkButton(
-        #     self.frame_buttons_table,
-        #     text="Abrir",
-        #     width=3,
-        #     corner_radius=20,
-        #     border_width=1,
-        #     command=self.open_xsc,
-        # )
-        # self.button_eliminar.pack(side="left", expand=True)
-
-        """
-        Icono para elimiar el ultimo----- 
-        """
 
         imagen_eliminar_ultimo = Image.open(r"Icon\eliminar-a-la-derechaNEG.png")
         icono_eliminar_ultimo = ctk.CTkImage(
@@ -394,6 +370,7 @@ class Window(ctk.CTk):
             height=20,
             corner_radius=20,
             border_width=1,
+            border_color="white",
             command=self.eliminar_ultimo,
             image=icono_eliminar_ultimo,
             compound="top",
@@ -402,13 +379,6 @@ class Window(ctk.CTk):
         # ******************************************************************
 
         # ------------------Frame PARA EL PUERTO-------------------------------
-        #    self.frame_puerto = ctk.CTkFrame(self.table_frame, width=300,height=400)
-        #         # self.frame_puerto.pack(side='bottom', pady=20)
-        #         # self.frame_puerto.pack_propagate(False)
-
-        #         # self.label_puerto = ctk.CTkLabel(self.frame_puerto, text='Puerto', font=('Cambria', 15))
-        #         # # self.label_peso.pack(expand=True)
-        #
 
         # -----------------------Frame Principal-----------------------
 
@@ -437,55 +407,22 @@ class Window(ctk.CTk):
         self.frame_peso_al_momento.grid_rowconfigure((0, 1), weight=1)
 
         self.label_tara = ctk.CTkLabel(
-            self.frame_peso_al_momento, text="-", font=("Cambria", 15)
+            self.frame_peso_al_momento, text="", font=("Cambria", 15)
         )
         self.label_tara.grid(row=0, column=0, sticky="nw", padx=10, pady=10)
 
         self.label_neto = ctk.CTkLabel(
-            self.frame_peso_al_momento, text="-", font=("Cambria", 15)
+            self.frame_peso_al_momento, text="", font=("Cambria", 15)
         )
         self.label_neto.grid(row=1, column=0, sticky="sw", padx=10, pady=5)
 
         self.label_peso = ctk.CTkLabel(
             self.frame_peso_al_momento,
-            text="----",
+            text="",
             text_color="red",
             font=("Cambria", 90),
         )
         self.label_peso.grid(row=0, column=1, rowspan=2, sticky="nsew")
-
-        # --------------------------------------------------------------------------------------------------------------------------
-
-        # self.frame_peso_al_momento = ctk.CTkFrame(self.frame_peso, width=30, height=100)
-        # self.frame_peso_al_momento.pack(pady=10, padx=10, fill="both")
-        # self.frame_peso_al_momento.pack_propagate(False)
-
-        # self.label_tara = ctk.CTkLabel(
-        #     self.frame_peso_al_momento,
-        #     text="tara",
-        #     font=("Cambria", 15),
-        # )
-        # self.label_tara.pack(side="left", pady=5)
-
-        # self.label_neto = ctk.CTkLabel(
-        #     self.frame_peso_al_momento, text="neto", font=("Cambria", 15)
-        # )
-        # self.label_neto.pack(side="bottom")
-
-        # self.label_peso = ctk.CTkLabel(
-        #     self.frame_peso_al_momento,
-        #     text="-----",
-        #     text_color="red",
-        #     font=("Cambria", 90),
-        # )
-        # self.label_peso.pack(side="left", expand=True)
-        # --------------------------------------------------------------------------------------------------------------------------
-        # -----------FRame para mostrar la tara en el label
-
-        # self.frame_indicador = ctk.CTkFrame(
-        #     self.frame_peso_al_momento, height=30, width=30
-        # )
-        # self.frame_indicador.pack(side="left", padx=50)
 
         # ----------- Frame de Botones Principales, tarar, zero etc
 
@@ -508,7 +445,7 @@ class Window(ctk.CTk):
             width=3,
             height=20,
             corner_radius=40,
-            border_color="#440D66",
+            border_color="white",
             border_width=1,
             command=self.shell.tara,
             image=icon_tarar,
@@ -528,7 +465,7 @@ class Window(ctk.CTk):
             width=3,
             height=20,
             corner_radius=40,
-            border_color="#440D66",
+            border_color="white",
             border_width=1,
             command=self.shell.zero,
             image=icon_zero,
@@ -547,7 +484,7 @@ class Window(ctk.CTk):
             width=3,
             height=20,
             corner_radius=40,
-            border_color="#440D66",
+            border_color="white",
             border_width=1,
             command=self.shell.quite_tara,
             image=icon_q_tara,
@@ -625,7 +562,7 @@ class Window(ctk.CTk):
         self.comunicacion.port = puerto_elegido
 
         self.label_port.configure(
-            text=f"Puerto: {self.comunicacion.port} -- {self.comunicacion.baud}"
+            text=f"Puerto: {self.comunicacion.port} | {self.comunicacion.baud}"
         )
         if self.comunicacion.conexion():
             # inf = f"conexion: {self.comunicacion.port} | baud: {self.comunicacion.baud}"
@@ -740,8 +677,8 @@ class Window(ctk.CTk):
                             last_i = items[-1]
                             val = self.table.item(last_i)["values"]
                             self.last_weight = float(val[1])
-                        CTkMessagebox(title="Open", message="Exito", icon="check")
-                        self.table.yview_moveto(1)
+                    CTkMessagebox(title="Open", message="Exito", icon="check")
+                    self.table.yview_moveto(1)
             except Exception as e:
                 CTkMessagebox(title="Open", message="Warning", icon="warning")
 
@@ -782,21 +719,31 @@ class Window(ctk.CTk):
         tara_lecture = self.shell.obtener_tara()
 
         if len(lecture) >= 3:
-            bruto = float(lecture[2])
             try:
-                p_tara = float(tara_lecture.split()[0])
-            except:
-                p_tara = 0
+                peso_r = int(float(lecture[2]))
+                self.label_peso.configure(text=str(peso_r))
+                self.label_neto.configure(text=f"N:{peso_r} kg", text_color="#FF6EDE")
+            except ValueError:
+                pass
 
-            neto = bruto - p_tara
-            self.label_neto.configure(text=f"N:{neto}kg", text_color="pink")
+        # if len(lecture) >= 3:
+        #     bruto = int(lecture[2])
+        #     try:
+        #         p_tara = int(tara_lecture.split()[0])
+        #     except:
+        #         p_tara = 0
+
+        #     neto = bruto - p_tara
+        #     self.label_neto.configure(text=f"N:{neto} kg", text_color="#FF6EDE")
 
         try:
-            wg = float(lecture[2])
+            wg = int(lecture[2])
             if wg > self.peso_maximo and not self.alerta_peso_maximo:
                 self.alerta_peso_maximo = True
                 CTkMessagebox(
-                    title="Sobrecarga", message=f"Carga maxima {wg} kg", icon="warning"
+                    title="Sobrecarga",
+                    message=f"Carga maxima 60000 kg, {wg}",
+                    icon="warning",
                 )
             elif wg < self.peso_maximo:
                 self.alerta_peso_maximo = False
@@ -813,7 +760,8 @@ class Window(ctk.CTk):
                 self.label_peso.configure(text_color="#F56E6E")
 
             valor_tara = self.shell.obtener_tara()
-            self.label_tara.configure(text=f"T:{valor_tara}", text_color="#257976")
+
+            self.label_tara.configure(text=f"Tara: {valor_tara}", text_color="#FF802E")
         self.after(100, self.peso_vivo)
 
     def apli_cal_cero(self):
