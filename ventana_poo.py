@@ -241,6 +241,11 @@ class Window(ctk.CTk):
         self.tara_activa = False
         self.val_tara = 0
 
+        # ---------------------------
+        self.peso_maximo = 59000
+        self.alerta_peso_maximo = False
+        # ---------------------------
+
         self.title("MT")
         self.geometry("1000x600+100+100")
 
@@ -419,30 +424,62 @@ class Window(ctk.CTk):
         )
         self.label_unidad.pack(side="right", padx=30)
 
-        self.frame_peso_al_momento = ctk.CTkFrame(self.frame_peso, width=30, height=100)
-        self.frame_peso_al_momento.pack(pady=10, padx=10, fill="both")
+        # ***********************************+
+
+        self.frame_peso_al_momento = ctk.CTkFrame(
+            self.frame_peso, width=400, height=150
+        )
+        self.frame_peso_al_momento.pack(pady=10, padx=10, fill="both", expand=True)
         self.frame_peso_al_momento.pack_propagate(False)
 
+        self.frame_peso_al_momento.grid_columnconfigure(0, weight=1)
+        self.frame_peso_al_momento.grid_columnconfigure(1, weight=3)
+        self.frame_peso_al_momento.grid_rowconfigure((0, 1), weight=1)
+
         self.label_tara = ctk.CTkLabel(
-            self.frame_peso_al_momento,
-            text="tara",
-            font=("Cambria", 15),
+            self.frame_peso_al_momento, text="-", font=("Cambria", 15)
         )
-        self.label_tara.pack(side="top", padx=10)
+        self.label_tara.grid(row=0, column=0, sticky="nw", padx=10, pady=10)
 
         self.label_neto = ctk.CTkLabel(
-            self.frame_peso_al_momento, text="neto", font=("Cambria", 15)
+            self.frame_peso_al_momento, text="-", font=("Cambria", 15)
         )
-        self.label_neto.pack(side="bottom")
+        self.label_neto.grid(row=1, column=0, sticky="sw", padx=10, pady=5)
 
         self.label_peso = ctk.CTkLabel(
             self.frame_peso_al_momento,
-            text="-----",
+            text="----",
             text_color="red",
             font=("Cambria", 90),
         )
-        self.label_peso.pack(side="left", expand=True)
+        self.label_peso.grid(row=0, column=1, rowspan=2, sticky="nsew")
 
+        # --------------------------------------------------------------------------------------------------------------------------
+
+        # self.frame_peso_al_momento = ctk.CTkFrame(self.frame_peso, width=30, height=100)
+        # self.frame_peso_al_momento.pack(pady=10, padx=10, fill="both")
+        # self.frame_peso_al_momento.pack_propagate(False)
+
+        # self.label_tara = ctk.CTkLabel(
+        #     self.frame_peso_al_momento,
+        #     text="tara",
+        #     font=("Cambria", 15),
+        # )
+        # self.label_tara.pack(side="left", pady=5)
+
+        # self.label_neto = ctk.CTkLabel(
+        #     self.frame_peso_al_momento, text="neto", font=("Cambria", 15)
+        # )
+        # self.label_neto.pack(side="bottom")
+
+        # self.label_peso = ctk.CTkLabel(
+        #     self.frame_peso_al_momento,
+        #     text="-----",
+        #     text_color="red",
+        #     font=("Cambria", 90),
+        # )
+        # self.label_peso.pack(side="left", expand=True)
+        # --------------------------------------------------------------------------------------------------------------------------
         # -----------FRame para mostrar la tara en el label
 
         # self.frame_indicador = ctk.CTkFrame(
@@ -752,7 +789,19 @@ class Window(ctk.CTk):
                 p_tara = 0
 
             neto = bruto - p_tara
-            self.label_neto.configure(text=f"NNeto {neto}", text_color="pink")
+            self.label_neto.configure(text=f"N:{neto}kg", text_color="pink")
+
+        try:
+            wg = float(lecture[2])
+            if wg > self.peso_maximo and not self.alerta_peso_maximo:
+                self.alerta_peso_maximo = True
+                CTkMessagebox(
+                    title="Sobrecarga", message=f"Carga maxima {wg} kg", icon="warning"
+                )
+            elif wg < self.peso_maximo:
+                self.alerta_peso_maximo = False
+        except:
+            pass
 
         if len(lecture) >= 3:
             wg = lecture[2]
@@ -764,8 +813,8 @@ class Window(ctk.CTk):
                 self.label_peso.configure(text_color="#F56E6E")
 
             valor_tara = self.shell.obtener_tara()
-            self.label_tara.configure(text=f"Tara: {valor_tara}", text_color="white")
-        self.after(200, self.peso_vivo)
+            self.label_tara.configure(text=f"T:{valor_tara}", text_color="#257976")
+        self.after(100, self.peso_vivo)
 
     def apli_cal_cero(self):
         res = self.shell.cali_cero()
