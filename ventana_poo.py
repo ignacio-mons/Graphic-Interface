@@ -12,6 +12,8 @@ from PIL import Image
 import serial.tools.list_ports
 import os
 from fpdf import FPDF
+from customtkinter import CTkOptionMenu
+import openpyxl
 
 
 def ruta(r_relativa):
@@ -657,20 +659,398 @@ class ventana_calibracion(ctk.CTkToplevel):
 
 
 class repetibilidad(ctk.CTkToplevel):
-    def __init__(self, master, shell, *args, **kwargs):
+    def __init__(self, master, shell, lista_instrumentos, *args, **kwargs):
         super().__init__(master, *args, **kwargs)
+        self.lista_instrumentos = lista_instrumentos
         self.shell = shell
         self.title("Repetibilidad")
         self.geometry("800x700+150+50")
         self.grab_set()
 
+        self.menu()
         self.widgets()
-        self.peso_al_momento()
+        self.actualizar_peso()
+
+    def widgets(self):
+
+        self.frame_principal = ctk.CTkFrame(self)
+        self.frame_principal.pack(fill="both", expand=True, padx=5, pady=5)
+        self.frame_principal.pack_propagate(False)
+
+        self.frame_principal.grid_columnconfigure(0, weight=1)
+        self.frame_principal.grid_columnconfigure(1, weight=1)
+
+        self.frame_principal.grid_rowconfigure(0, weight=0)
+        self.frame_principal.grid_rowconfigure(1, weight=0)
+        self.frame_principal.grid_rowconfigure(2, weight=1)
+
+        self.frame_peso = ctk.CTkFrame(self.frame_principal, width=300, height=250)
+        self.frame_peso.grid(row=0, column=0, rowspan=2, padx=10, pady=10, sticky="n")
+        self.frame_peso.pack_propagate(False)
+        # ------
+        self.frame_unidad = ctk.CTkFrame(self.frame_peso, width=300, height=100)
+        self.frame_unidad.pack(padx=10, pady=10, side="top", anchor="n")
+        self.frame_unidad.pack_propagate(False)
+
+        self.label_unidad = ctk.CTkLabel(
+            self.frame_unidad, text="kg", font=("Cambria", 50)
+        )
+        self.label_unidad.pack(side="right", padx=10, pady=10, anchor="n")
+        self.frame_peso_al_momento = ctk.CTkFrame(
+            self.frame_unidad, width=450, height=150
+        )
+        self.frame_peso_al_momento.pack(pady=10, padx=10, fill="both", expand=True)
+        self.frame_peso_al_momento.pack_propagate(False)
+        self.label_peso = ctk.CTkLabel(
+            self.frame_peso_al_momento, text="0.00", font=("Cambria", 50)
+        )
+        self.label_peso.pack(expand=True)
+        # ----------------------------
+        imagen_tarar = Image.open(ruta(os.path.join("Icon", "aumentar.png")))
+        # imagen_tarar = Image.open(r"Icon\aumentar.png")
+        icon_tarar = ctk.CTkImage(
+            light_image=imagen_tarar, dark_image=imagen_tarar, size=(30, 30)
+        )
+
+        self.button_tarar = ctk.CTkButton(
+            self.frame_peso,
+            text="Tara",
+            width=2,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            command=self.shell.tara,
+            image=icon_tarar,
+            compound="top",
+        )
+        self.button_tarar.pack(side="left", expand=True)
+        # ---------------------------
+        # ------------BOTON DE ZERO-------------
+        imagen_zero = Image.open(ruta(os.path.join("Icon", "cero.png")))
+        # imagen_zero = Image.open(r"Icon\cero.png")
+        icon_zero = ctk.CTkImage(
+            light_image=imagen_zero, dark_image=imagen_zero, size=(30, 30)
+        )
+
+        self.button_zero = ctk.CTkButton(
+            self.frame_peso,
+            text="Zero",
+            width=2,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            command=self.shell.zero,
+            image=icon_zero,
+            compound="top",
+        )
+        self.button_zero.pack(side="left", expand=True)
+        # -----------BOTON DE QUITAR TARA---------------
+
+        imagen_q_tara = Image.open(ruta(os.path.join("Icon", "perdida-peso.png")))
+        # imagen_q_tara = Image.open(r"Icon\perdida-peso.png")
+        icon_q_tara = ctk.CTkImage(
+            light_image=imagen_q_tara, dark_image=imagen_q_tara, size=(30, 30)
+        )
+        self.button_quitar_tara = ctk.CTkButton(
+            self.frame_peso,
+            text="Eliminar Tara",
+            width=2,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            command=self.shell.quitar_tara,
+            image=icon_q_tara,
+            compound="top",
+        )
+        self.button_quitar_tara.pack(side="left", expand=True)
+
+        # --------- FRAME CONDICIONES-------------
+        self.frame_condiciones = ctk.CTkFrame(
+            self.frame_principal, width=450, height=120
+        )
+        self.frame_condiciones.grid(row=0, column=1, padx=10, pady=(10, 5), sticky="n")
+        self.frame_condiciones.grid_propagate(False)
+        self.frame_condiciones.grid_columnconfigure((0, 1, 2), weight=1)
+
+        # -------TEMPERATURA----------------
+        self.frame_temperatura = ctk.CTkFrame(
+            self.frame_condiciones, width=100, height=40
+        )
+        self.frame_temperatura.grid(row=0, column=0, padx=10, pady=10, sticky="n")
+        self.frame_temperatura.grid_propagate(False)
+        self.frame_temperatura.grid_columnconfigure(0, weight=1)
+        self.frame_temperatura.grid_rowconfigure(0, weight=1)
+
+        self.label_temperatura = ctk.CTkLabel(
+            self.frame_temperatura, text="--", font=("Cambria", 30)
+        )
+        self.label_temperatura.grid(row=0, column=0, sticky="nsew")
+
+        self.combobox_temperatura = CTkOptionMenu(
+            master=self.frame_condiciones,
+            values=self.lista_instrumentos,
+            width=120,
+            height=25,
+            font=("Cambria", 12),
+        )
+        self.combobox_temperatura.grid(row=1, column=1, padx=10, pady=5)
+        self.combobox_temperatura.set("Selecciona")
+
+        # --------------HUMEDAD-------------------------
+        self.frame_humedad = ctk.CTkFrame(self.frame_condiciones, width=100, height=40)
+        self.frame_humedad.grid(row=0, column=1, padx=10, pady=10, sticky="n")
+        self.frame_humedad.grid_propagate(False)
+        self.frame_humedad.grid_columnconfigure(0, weight=1)
+        self.frame_humedad.grid_rowconfigure(0, weight=1)
+
+        self.label_humedad = ctk.CTkLabel(
+            self.frame_humedad, text="--", font=("Cambria", 30)
+        )
+        self.label_humedad.grid(row=0, column=0, sticky="nsew")
+
+        self.combobox_humedad = CTkOptionMenu(
+            master=self.frame_condiciones,
+            values=self.lista_instrumentos,
+            width=120,
+            height=25,
+            font=("Cambria", 12),
+        )
+        self.combobox_humedad.grid(row=1, column=2, padx=10, pady=5)
+        self.combobox_humedad.set("Selecciona")
+
+        # --------------PRESION----------------
+        self.frame_presion = ctk.CTkFrame(self.frame_condiciones, width=100, height=40)
+        self.frame_presion.grid(row=0, column=2, padx=10, pady=10, sticky="n")
+        self.frame_presion.grid_propagate(False)
+        self.frame_presion.grid_columnconfigure(0, weight=1)
+        self.frame_presion.grid_rowconfigure(0, weight=1)
+
+        self.label_presion = ctk.CTkLabel(
+            self.frame_presion, text="--", font=("Cambria", 30)
+        )
+        self.label_presion.grid(row=0, column=0, sticky="nsew")
+
+        self.combobox = CTkOptionMenu(
+            master=self.frame_condiciones,
+            values=self.lista_instrumentos,
+            width=120,
+            height=25,
+            font=("Cambria", 12),
+        )
+        self.combobox.grid(row=1, column=0, padx=10, pady=5)
+        self.combobox.set("Selecciona")
+
+        # ------------------Frame registro T-----------------
+        self.frame_registro_m = ctk.CTkFrame(
+            self.frame_principal, width=450, height=400
+        )
+        self.frame_registro_m.grid(row=1, column=1, padx=10, pady=(0, 20), sticky="n")
+        self.frame_registro_m.grid_propagate(False)
+
+        self.combobox_p1 = CTkOptionMenu(
+            master=self.frame_registro_m,
+            values=self.lista_instrumentos,
+            width=120,
+            height=25,
+            font=("Cambria", 12),
+        )
+        self.combobox_p1.grid(row=0, column=0, padx=15, pady=5)
+        self.combobox_p1.set("Pesa 1")
+
+        self.combobox_p2 = CTkOptionMenu(
+            master=self.frame_registro_m,
+            values=self.lista_instrumentos,
+            width=120,
+            height=25,
+            font=("Cambria", 12),
+        )
+        self.combobox_p2.grid(row=0, column=1, padx=15, pady=5)
+        self.combobox_p2.set("Pesa 2")
+
+        self.combobox_p3 = CTkOptionMenu(
+            master=self.frame_registro_m,
+            values=self.lista_instrumentos,
+            width=120,
+            height=25,
+            font=("Cambria", 12),
+        )
+        self.combobox_p3.grid(row=0, column=2, padx=15, pady=5)
+        self.combobox_p3.set("Pesa 3")
+
+        # -------------------Tabla de registro------------
+
+        self.frame_tabla = ctk.CTkFrame(self.frame_registro_m)
+        self.frame_tabla.grid(
+            row=1, column=0, columnspan=3, padx=10, pady=10, sticky="nsew"
+        )
+        self.frame_registro_m.grid_rowconfigure(1, weight=1)
+
+        self.style_tabla = ttk.Style()
+        self.style_tabla.theme_use("clam")
+        self.style_tabla.configure(
+            "Treeview",
+            background="#BD9D9D",
+            foreground="black",
+            rowheight=25,
+            fieldbackground="#DFF2F5",
+            font=("Cambria", 12),
+        )
+
+        self.style_tabla.map("Treeview", background=[("selected", "blue")])
+
+        self.tabla = ttk.Treeview(
+            self.frame_tabla,
+            columns=("#", "Pesa", "Medición"),
+            show="headings",
+            height=8,
+        )
+
+        self.tabla.heading("#", text="#")
+        self.tabla.heading("Pesa", text="Pesa")
+        self.tabla.heading("Medición", text="Indicación")
+
+        self.tabla.column("#", width=30, anchor="center")
+        self.tabla.column("Pesa", width=100, anchor="center")
+        self.tabla.column("Medición", width=100, anchor="center")
+
+        self.tabla.grid(row=0, column=0, padx=20, pady=20)
+
+        # self.scroll = ctk.CTkScrollbar(self.frame_tabla, command=self.tabla.yview)
+        # self.scroll.pack(side="right", fill="y")
+
+        self.botton_r = ctk.CTkButton(
+            self.frame_tabla, text="Registro", command=self.guardar_medicion
+        )
+        self.botton_r.grid(row=0, column=1)
+        self.contador_mediciones = 1
+
+        # --------------------------------------------------
+
+        # self.frame_condiciones_iniciales = ctk.CTkFrame(
+        #     self.frame_principal, width=450, height=200
+        # )
+        # self.frame_condiciones_iniciales.grid(
+        #     row=1, column=0, padx=20, pady=(0, 20), sticky="n"
+        # )
+        # self.frame_condiciones_iniciales.grid_propagate(False)
+
+        #  self.frame_registro_m = ctk.CTkFrame(
+        #     self.frame_principal, width=450, height=400
+        # )
+        # self.frame_registro_m.grid(row=1, column=1, padx=10, pady=(0, 20), sticky="n")
+        # self.frame_registro_m.grid_propagate(False)
+
+    def menu(self):
+        self.menu = CTkMenuBar(master=self)
+        self.b1 = self.menu.add_cascade("Cargar", command=self.abrir_modelos)
+
+    def actualizar_peso(self):
+        lectura = self.shell.peso_instantaneo()
+        if len(lectura) >= 3:
+            wg = lectura[2]
+            self.label_peso.configure(text=wg)
+            self.label_temperatura.configure(text=wg)
+            self.label_presion.configure(text=wg)
+            self.label_humedad.configure(text=wg)
+
+            if lectura[1] == "S":
+                self.label_peso.configure(text_color="green")
+            else:
+                self.label_peso.configure(text_color="red")
+
+            self.after(100, self.actualizar_peso)
+
+    def abrir_modelos(self):
+        ruta = askopenfilename(
+            title="Seleccionar Catálogo de Equipos",
+            filetypes=[("Archivos de Excel", "*.xlsx")],
+        )
+
+        if ruta:
+            try:
+                wb = openpyxl.load_workbook(ruta, data_only=True)
+                hoja = wb.active
+
+                lista_pesas = []
+                lista_sensores = []
+
+                # Leemos filas desde la 2 para evitar encabezados
+                for fila in hoja.iter_rows(min_row=2, max_col=2, values_only=True):
+                    # fila[0] es la Columna A (Pesas)
+                    if fila[0]:
+                        lista_pesas.append(str(fila[0]))
+
+                    # fila[1] es la Columna B (Sensores)
+                    if fila[1]:
+                        lista_sensores.append(str(fila[1]))
+
+                # 1. Actualizamos los combos de PESAS (Registro)
+                self.combobox_p1.configure(values=lista_pesas)
+                self.combobox_p2.configure(values=lista_pesas)
+                self.combobox_p3.configure(values=lista_pesas)
+
+                # 2. Actualizamos los combos de SENSORES (Condiciones)
+                self.combobox_temperatura.configure(values=lista_sensores)
+                self.combobox_humedad.configure(values=lista_sensores)
+                self.combobox.configure(values=lista_sensores)  # El de presión
+
+                # Resetear textos visuales
+                self.combobox_p1.set("Pesa 1")
+                self.combobox_temperatura.set("Selecciona")
+
+                CTkMessagebox(
+                    title="Éxito",
+                    message=f"Cargados: {len(lista_pesas)} pesas y {len(lista_sensores)} sensores",
+                    icon="check",
+                )
+
+            except Exception as e:
+                CTkMessagebox(
+                    title="Error", message=f"Fallo al leer Excel: {e}", icon="cancel"
+                )
+
+    def guardar_medicion(self):
+        indice_pesa = (self.contador_mediciones - 1) % 3
+
+        if indice_pesa == 0:
+            pesa_seleccionada = self.combobox_p1.get()
+            nombre_columna = "Pesa 1"
+        elif indice_pesa == 1:
+            pesa_seleccionada = self.combobox_p2.get()
+            nombre_columna = "Pesa 2"
+        else:
+            pesa_seleccionada = self.combobox_p3.get()
+            nombre_columna = "Pesa 3"
+
+        peso_leido = self.label_peso.cget("text")
+
+        self.tabla.insert(
+            "",
+            "end",
+            values=(
+                self.contador_mediciones,
+                f"{pesa_seleccionada}",
+                peso_leido,
+            ),
+        )
+
+        self.tabla.yview_moveto(1)
+        self.contador_mediciones += 1
+
+        # if self.combobox_p1.get() == "Selecciona" or self.combobox_p1 == "Pesa 1":
+        #     CTkMessagebox(title="Aviso", message="Seleccionar pesas")
+        #     return
+        # p_actual = self.label_peso.cget("text")
+        # self.tabla.insert("", "end", values=(self.i, self.combobox_p1.get(), p_actual))
+        # self.i += 1
 
 
 class Window(ctk.CTk):
     """
-    clase principal de la ventana, aqui se crean los widgets, los menus y se actualiza el peso al momento
+    clase principal de la ventana, aqui se crean los widgepesots, los menus y se actualiza el peso al momento
     """
 
     def __init__(self, comunicacion: Comunication, shell: Shell):
@@ -1280,10 +1660,34 @@ class Window(ctk.CTk):
             self.calibracion_window.focus()
 
     def ventana_repetibilidad(self):
-        if (
-            not hasattr(self, "repetibilidad_window")
-            or not self.repetibilidad_window.winfo_exists()
-        ):
-            self.repetibilidad_window = repetibilidad(self, self.shell)
+        # CAMBIO: Usamos "lista_medidores" que es como lo guardas en abrir_modelos
+        equipos = getattr(self, "lista_medidores", ["--"])
+
+        if not hasattr(self, "v_repet") or not self.v_repet.winfo_exists():
+            # Asegúrate de pasar 'equipos' aquí
+            self.v_repet = repetibilidad(self, self.shell, lista_instrumentos=equipos)
         else:
-            self.repetibilidad_window.focus()
+            self.v_repet.focus()
+
+    # def ventana_repetibilidad(self):
+    #     # Si no se ha cargado el catálogo, 'medidores' será la lista con el mensaje de aviso
+    #     medidores = getattr(self, "lista_medidores", ["Cargar equipos"])
+
+    #     if (
+    #         not hasattr(self, "repetibilidad_window")
+    #         or not self.repetibilidad_window.winfo_exists()
+    #     ):
+    #         # PASO CLAVE: Agregar medidores como argumento
+    #         self.repetibilidad_window = repetibilidad(self, self.shell, medidores)
+    #     else:
+    #         self.repetibilidad_window.focus()
+
+    # def ventana_repetibilidad(self):
+    #     medidores = getattr(self, "lista_medidores", ["Cargar equipos"])
+    #     if (
+    #         not hasattr(self, "repetibilidad_window")
+    #         or not self.repetibilidad_window.winfo_exists()
+    #     ):
+    #         self.repetibilidad_window = repetibilidad(self, self.shell)
+    #     else:
+    #         self.repetibilidad_window.focus()
