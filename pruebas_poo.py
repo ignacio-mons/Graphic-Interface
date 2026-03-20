@@ -7,8 +7,7 @@ import tkinter as tk
 
 # print(bascula.real_weight())
 ctk.set_appearance_mode("System")
-ctk.set_default_color_theme("Harlequin.json")
-
+ctk.set_default_color_theme("midnight.json")
 
 # if __name__ == "__main__":
 #     com = Comunication(port="COM1", baud=9600)
