@@ -7,7 +7,7 @@ import tkinter as tk
 
 # print(bascula.real_weight())
 ctk.set_appearance_mode("System")
-ctk.set_default_color_theme("midnight.json")
+ctk.set_default_color_theme("breeze.json")
 
 # if __name__ == "__main__":
 #     com = Comunication(port="COM1", baud=9600)
@@ -18,6 +18,12 @@ ctk.set_default_color_theme("midnight.json")
 #     print(bascula.escribir_variable(40, 1))
 
 if __name__ == "__main__":
+    import threading
+
+    # hilo_b = threading.Thread(target=read_bar, daemon=True)
+    # # hilo_h = threading.Thread(target=read_hidro, daemon=True)
+    # hilo_b.start()
+    # hilo_h.start()
     com = Comunication(port="", baud=9600)
     sh = Shell(com)
     root = Window(com, sh)
