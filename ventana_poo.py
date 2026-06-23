@@ -8,7 +8,7 @@ from CTkMenuBarPlus import *
 from datetime import datetime
 from CTkMessagebox import CTkMessagebox
 from tkinter.filedialog import asksaveasfilename, askopenfilename
-from PIL import Image
+from PIL import Image, ImageTk
 import serial.tools.list_ports
 import os
 from customtkinter import CTkOptionMenu
@@ -17,6 +17,8 @@ import threading
 import re
 from openpyxl.styles import PatternFill, Font
 import pandas as pd
+import matplotlib.pyplot as plt
+import io
 
 global Lectura_barometro, LecturaT1, LecturaT2, LecturaH1, LecturaH2
 Lectura_barometro = "0.0"
@@ -1001,7 +1003,7 @@ class Repetibilidad(ctk.CTkToplevel):
                             h = str(i[7]).strip() if i[7] is not None else ""
                             j = str(i[9]).strip() if i[9] is not None else ""
                             k = str(i[10]).strip() if i[10] is not None else ""
-
+                            L = str(i[11]).strip() if i[11] is not None else ""
                             pesa_key = f"{c} | {f} | {j}{k}"
 
                             self.pesas[pesa_key] = {
@@ -1014,6 +1016,7 @@ class Repetibilidad(ctk.CTkToplevel):
                                 "id_pesa": h,
                                 "nominal": j,
                                 "unidad": k,
+                                "sustitucion": L,
                             }
                             self.lista_pesas_completa.append(pesa_key)
 
@@ -1077,13 +1080,24 @@ class Repetibilidad(ctk.CTkToplevel):
             #     return
 
     def mostrar_selector_pesas(self):
-        if self.lista_pesas_completa:
-            Ventana_Pesas(self, self.lista_pesas_completa, self.actualizar_tabla_pesas)
+        """Filtra el diccionario de pesas y muestra en la ventana emergente solo los patrones de calibración (sustitucion == 'no')"""
+        diccionario_pesas = getattr(self, "pesas", {})
+
+        # Filtramos las llaves que tengan en su atributo sustitución la palabra "no"
+        lista_patrones = [
+            llave
+            for llave, datos in diccionario_pesas.items()
+            if datos.get("sustitucion") == "no"
+        ]
+
+        if lista_patrones:
+            # Abrimos la Ventana_Pesas estándar de checkboxes, pero solo con el subconjunto de patrones
+            Ventana_Pesas(self, lista_patrones, self.actualizar_tabla_pesas)
         else:
             CTkMessagebox(
-                title="Error",
-                message="No se han cargado las pesas.",
-                icon="cancel",
+                title="Sin registros",
+                message="No se encontraron elementos marcados como patrones ('no') en la columna L del archivo cargado.",
+                icon="warning",
             )
 
     def actualizar_tabla_pesas(self, seleccionadas):
@@ -1645,59 +1659,2607 @@ class Ventana_Pesas(ctk.CTkToplevel):
         self.destroy()
 
 
-# class Excentricidad(ctk.CTkToplevel):
-#     def __init__(self, master, shell, *args, **kwargs):
-#         super().__init__(master, *args, **kwargs)
-#         self.shell = shell
-#         self.title("Excentricidad")
-#         self.geometry("800x800+190+20")
-#         self.grab_set()
+class Excentricidad(ctk.CTkToplevel):
+    def __init__(
+        self,
+        master,
+        shell: Shell,
+        lista_instrumentos,
+        ruta_excel_trabajo=None,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(master, *args, **kwargs)
+        self.shell = shell
+        self.lista_instrumentos = lista_instrumentos
+        self.ruta_excel_trabajo = ruta_excel_trabajo
+        self.title("Excentricidad")
+        self.geometry("1200x800+190+20")
+        self.grab_set()
+        self.menu()
+        self.archivo_calibracion_actual = None
+        self.widgets()
+        self.sentido_actual = "IDA"
+        self.actualizar_peso()
 
-# self.widgets()
+    def widgets(self):
+        self.frame_repetibilidad = ctk.CTkFrame(self, width=800, height=700)
+        self.frame_repetibilidad.pack(fill="both", expand=True, padx=5, pady=5)
+        self.frame_repetibilidad.pack_propagate(False)
 
+        self.frame_peso = ctk.CTkFrame(self.frame_repetibilidad, width=400, height=150)
+        self.frame_peso.pack(anchor="n", padx=10, pady=10, fill="x")
+        self.frame_peso.pack_propagate(False)
 
-# -----------------------------------------------------------------------
-class Excentricidad(Repetibilidad):
-    def __init__(self, master, shell: Shell, lista_instrumentos, *args, **kwargs):
-        # Llamamos al constructor de Repetibilidad para crear toda la interfaz
-        super().__init__(master, shell, lista_instrumentos, *args, **kwargs)
+        self.frame_peso_instantaneo = ctk.CTkFrame(
+            self.frame_peso, width=450, height=150
+        )
+        self.frame_peso_instantaneo.pack(side="left", padx=10, pady=10)
+        self.frame_peso_instantaneo.pack_propagate(False)
 
-        # 1. Cambiamos el título
-        self.title("Prueba de Excentricidad")
+        self.label_unidad = ctk.CTkLabel(
+            self.frame_peso_instantaneo, text="kg", font=("Cambria", 50)
+        )
+        self.label_unidad.pack(side="right", padx=20, pady=5)
 
-        # 2. Modificamos los encabezados de la tabla para excentricidad
-        # Reutilizamos self.tabla que ya fue creada en super().widgets()[cite: 1]
-        self.tabla.heading("#", text="Posición")
-        self.tabla.heading("Medicion", text="Indicación")
+        self.frame_peso_al_momento = ctk.CTkFrame(
+            self.frame_peso_instantaneo, width=450, height=150
+        )
+        self.frame_peso_al_momento.pack(side="left", padx=10, pady=10)
+        self.frame_peso_al_momento.pack_propagate(False)
 
-        # 3. Diccionario para controlar las posiciones de la carga
-        self.posiciones = ["Centro", "Norte", "Este", "Sur", "Oeste"]
-        self.indice_posicion = 0
+        self.label_peso = ctk.CTkLabel(
+            self.frame_peso_al_momento, text="", font=("Cambria", 70)
+        )
+        self.label_peso.pack(padx=20, pady=5, expand=True)
 
-    def registrar_medicion(self):
-        """Sobrescribimos el método para que asigne posiciones automáticamente"""
-        lectura = self.shell.peso_estable()  # [cite: 1]
+        self.label_tara = ctk.CTkLabel(
+            self.frame_peso_al_momento, text="", font=("Cambria", 12)
+        )
+        self.label_tara.place(x=8, y=8)
 
+        self.label_neto = ctk.CTkLabel(
+            self.frame_peso_al_momento, text="", font=("Cambria", 12)
+        )
+        self.label_neto.place(x=8, y=79)
+
+        # ---------BOTONES-------------------
+        imagen_tarar = Image.open(ruta(os.path.join("Icon", "aumentar.png")))
+        icon_tarar = ctk.CTkImage(
+            light_image=imagen_tarar, dark_image=imagen_tarar, size=(30, 30)
+        )
+
+        self.button_tarar = ctk.CTkButton(
+            self.frame_peso,
+            text="Tara",
+            width=2,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            command=self.shell.tara,
+            image=icon_tarar,
+            compound="top",
+        )
+        self.button_tarar.pack(side="left", expand=True)
+        # ---------------BOTON ZERO-------------
+        imagen_zero = Image.open(ruta(os.path.join("Icon", "cero.png")))
+        icon_zero = ctk.CTkImage(
+            light_image=imagen_zero, dark_image=imagen_zero, size=(30, 30)
+        )
+
+        self.button_zero = ctk.CTkButton(
+            self.frame_peso,
+            text="Zero",
+            width=2,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            command=self.shell.zero,
+            image=icon_zero,
+            compound="top",
+        )
+        self.button_zero.pack(side="left", expand=True)
+
+        # ---------------BOTON QUITAR TARAR-------------
+        imagen_q_tara = Image.open(ruta(os.path.join("Icon", "perdida-peso.png")))
+        icon_q_tara = ctk.CTkImage(
+            light_image=imagen_q_tara, dark_image=imagen_q_tara, size=(30, 30)
+        )
+        self.button_quitar_tara = ctk.CTkButton(
+            self.frame_peso,
+            text="Eliminar Tara",
+            width=2,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            command=self.shell.quitar_tara,
+            image=icon_q_tara,
+            compound="top",
+        )
+        self.button_quitar_tara.pack(side="left", expand=True)
+
+        # ----------------Condiciones Ambientales-----------------
+        self.frame_condiciones = ctk.CTkFrame(
+            self.frame_repetibilidad, width=400, height=150
+        )
+        self.frame_condiciones.pack(anchor="s", padx=10, pady=5, fill="x")
+        self.frame_condiciones.pack_propagate(False)
+
+        self.frame_condicion1 = ctk.CTkFrame(
+            self.frame_condiciones, width=220, height=150
+        )
+        self.frame_condicion1.pack(side="left", padx=10, pady=10, expand=True)
+        self.frame_condicion1.pack_propagate(False)
+
+        self.label_condiciones = ctk.CTkLabel(
+            self.frame_condicion1,
+            text="Presión",
+            font=("Cambria", 20),
+        )
+        self.label_condiciones.pack(anchor="n", padx=2, pady=5, expand=True)
+
+        self.frame_condicion2 = ctk.CTkFrame(
+            self.frame_condiciones, width=220, height=150
+        )
+        self.frame_condicion2.pack(side="left", padx=10, pady=10, expand=True)
+        self.frame_condicion2.pack_propagate(False)
+
+        self.label_condiciones2 = ctk.CTkLabel(
+            self.frame_condicion2,
+            text="Humedad",
+            font=("Cambria", 20),
+        )
+        self.label_condiciones2.pack(anchor="n", padx=2, pady=5, expand=True)
+
+        self.frame_condicion3 = ctk.CTkFrame(
+            self.frame_condiciones, width=220, height=150
+        )
+        self.frame_condicion3.pack(side="left", padx=10, pady=10, expand=True)
+        self.frame_condicion3.pack_propagate(False)
+
+        self.label_condiciones3 = ctk.CTkLabel(
+            self.frame_condicion3,
+            text="Temperatura",
+            font=("Cambria", 20),
+        )
+        self.label_condiciones3.pack(anchor="n", padx=2, pady=5, expand=True)
+        # ---------PRESION-----------------
+
+        self.frame_presion = ctk.CTkFrame(self.frame_condicion1, width=200, height=50)
+        self.frame_presion.pack(expand=True, anchor="n")
+        self.frame_presion.pack_propagate(False)
+
+        self.label_presion = ctk.CTkLabel(
+            self.frame_presion,
+            text="---",
+            font=("Cambria", 30),
+        )
+        self.label_presion.pack(expand=True)
+
+        self.combo_presion = ctk.CTkOptionMenu(
+            master=self.frame_condicion1,
+            values=self.lista_instrumentos,
+            width=120,
+            height=25,
+            font=("Cambria", 12),
+        )
+        self.combo_presion.pack(expand=True)
+        self.combo_presion.set("Modelos")
+
+        # -------------HIGROMETRO-----------------
+
+        self.frame_higrometro = ctk.CTkFrame(
+            self.frame_condicion2, width=200, height=50
+        )
+        self.frame_higrometro.pack(expand=True, anchor="n")
+        self.frame_higrometro.pack_propagate(False)
+
+        self.label_higrometro = ctk.CTkLabel(
+            self.frame_higrometro,
+            text="---",
+            font=("Cambria", 30),
+        )
+        self.label_higrometro.pack(expand=True)
+        self.combo_higrometro = ctk.CTkOptionMenu(
+            master=self.frame_condicion2,
+            values=self.lista_instrumentos,
+            width=120,
+            height=25,
+            font=("Cambria", 12),
+        )
+        self.combo_higrometro.pack(expand=True)
+        self.combo_higrometro.set("Modelos")
+
+        # --------------Temperatura-----------------
+
+        self.frame_temperatura = ctk.CTkFrame(
+            self.frame_condicion3, width=200, height=50
+        )
+        self.frame_temperatura.pack(expand=True, anchor="n")
+        self.frame_temperatura.pack_propagate(False)
+
+        self.label_temperatura = ctk.CTkLabel(
+            self.frame_temperatura, text="---", font=("Cambria", 30)
+        )
+        self.label_temperatura.pack(expand=True)
+        self.combo_temperatura = ctk.CTkOptionMenu(
+            master=self.frame_condicion3,
+            values=self.lista_instrumentos,
+            width=120,
+            height=25,
+            font=("Cambria", 12),
+        )
+        self.combo_temperatura.pack(expand=True)
+        self.combo_temperatura.set("Modelos")
+
+        # --------------------------------
+        self.frame_registro = ctk.CTkFrame(
+            self.frame_repetibilidad, width=400, height=420
+        )
+        self.frame_registro.pack(anchor="s", padx=10, pady=5, fill="x")
+        self.frame_registro.pack_propagate(False)
+        # ----------------------------------
+        # -------Tabla de registro/Entry------
+        self.tabla = ttk.Treeview(
+            self.frame_registro,
+            columns=(
+                "sentido",
+                "seccion",
+                "indicacion",
+            ),
+            show="headings",
+            height=10,
+        )
+
+        self.tabla.heading("sentido", text="Sentido")
+        self.tabla.heading("seccion", text="Sección")
+        self.tabla.heading("indicacion", text="Indicación")
+
+        self.tabla.column("sentido", width=60, anchor="center")
+        self.tabla.column("seccion", width=60, anchor="center")
+        self.tabla.column("indicacion", width=90, anchor="center")
+        self.tabla.pack(side="left", padx=10, pady=20, anchor="n")
+
+        # ------tabla de prmedios------
+        self.tabla_promedios = ttk.Treeview(
+            self.frame_registro,
+            columns=("seccion_p", "promedio"),
+            show="headings",
+            height=10,
+        )
+
+        self.tabla_promedios.heading("seccion_p", text="Sección")
+        self.tabla_promedios.heading("promedio", text="Promedio")
+
+        self.tabla_promedios.column("seccion_p", width=90, anchor="center")
+        self.tabla_promedios.column("promedio", width=90, anchor="center")
+
+        self.tabla_promedios.pack(side="left", padx=15, pady=20, anchor="n")
+
+        # ----------frame de botones excentricidad----------
+        self.frame_botones_EX = ctk.CTkFrame(self.frame_registro, width=390, height=130)
+        self.frame_botones_EX.pack(side="left", padx=10, pady=20, anchor="n")
+        self.frame_botones_EX.pack_propagate(False)
+
+        self.entry_secciones = ctk.CTkEntry(
+            self.frame_botones_EX,
+            placeholder_text="Celdas",
+            width=100,
+            justify="center",
+            border_color="white",
+        )
+        self.entry_secciones.grid(row=0, column=0, padx=5, pady=10)
+
+        # self.entry_secciones.pack(side="top", padx=5, pady=10, anchor="n")
+        # self.entry_secciones.insert(0,"1")
+
+        imagen_generar = Image.open(ruta(os.path.join("Icon", "idea.png")))
+        icon_generar = ctk.CTkImage(
+            light_image=imagen_generar, dark_image=imagen_generar, size=(30, 30)
+        )
+
+        self.btn_generar = ctk.CTkButton(
+            self.frame_botones_EX,
+            text="Generar",
+            command=self.preparar_tabla_dinamica,
+            width=150,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            image=icon_generar,
+        )
+        self.btn_generar.grid(row=1, column=0, padx=5, pady=10)
+        # self.btn_generar.pack(side="top", padx=5, pady=5, anchor="n")
+
+        # imagen_sentido = Image.open(ruta(os.path.join("Icon", "de-dos-vias.png")))
+        # icon_sentido = ctk.CTkImage(
+        #     light_image=imagen_sentido, dark_image=imagen_sentido, size=(30, 30)
+        # )
+        # self.btn_sentido = ctk.CTkButton(
+        #     self.frame_botones_EX,
+        #     text="Sentido",
+        #     command=self.cambiar_sentido,
+        #     fg_color="#158A30",
+        #     image=icon_sentido,
+        # )
+        # self.btn_sentido.grid(row=2, column=0, padx=5, pady=10)
+
+        # self.frame_btn_principal = ctk.CTkFrame(
+        #     self.frame_registro, width=200, height=250
+        # )
+
+        # # self.frame_btn_principal.place(x=450, y=180)
+        # # self.frame_btn_principal.pack_propagate(False)
+
+        imagen_indicacion = Image.open(ruta(os.path.join("Icon", "boton-agregar.png")))
+        icon_indicacion = ctk.CTkImage(
+            light_image=imagen_indicacion, dark_image=imagen_indicacion, size=(30, 30)
+        )
+        self.btn_indicacion = ctk.CTkButton(
+            self.frame_botones_EX,
+            text="Registrar Peso",
+            command=self.registrar_peso,
+            width=150,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            image=icon_indicacion,
+        )
+        self.btn_indicacion.grid(row=3, column=0, padx=5, pady=10)
+
+        # ---------GUARDAR---------
+        imagen_btn_guardar = Image.open(
+            ruta(os.path.join("Icon", "guardar-el-archivo.png"))
+        )
+        icon_btn_guardar = ctk.CTkImage(
+            light_image=imagen_btn_guardar, dark_image=imagen_btn_guardar, size=(30, 30)
+        )
+        self.btn_guardar = ctk.CTkButton(
+            self.frame_botones_EX,
+            text="Guardar",
+            command=self.guardar_en_excel_existente,
+            fg_color="#4CAF50",
+            width=150,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            image=icon_btn_guardar,
+        )
+        self.btn_guardar.grid(row=2, column=0, padx=5, pady=10)
+
+        # --------BOTONES DE PESAS SUSTITUCION O NADA----
+
+        imagen_pesas = Image.open(ruta(os.path.join("Icon", "escoger.png")))
+        icon_pesas = ctk.CTkImage(
+            light_image=imagen_pesas, dark_image=imagen_pesas, size=(30, 30)
+        )
+
+        self.btn_pesas = ctk.CTkButton(
+            self.frame_botones_EX,
+            text="Pesas",
+            width=150,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            command=self.mostrar_selector_pesas,
+            image=icon_pesas,
+        )
+        self.btn_pesas.grid(row=0, column=1, padx=5, pady=10)
+
+        self.btn_sustitucion = ctk.CTkButton(
+            self.frame_botones_EX,
+            text="Sustitución",
+            command=self.mostrar_selector_sustitucion,
+            width=150,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            image=icon_pesas,
+        )
+        self.btn_sustitucion.grid(row=1, column=1, padx=5, pady=10)
+
+        # ----------Tabla de pesos -----------
+
+        self.tabla_sel = ttk.Treeview(
+            self.frame_registro,
+            columns=("#", "ID", "serie", "valor", "unidad"),
+            show="headings",
+            height=8,
+        )
+        self.tabla_sel.heading("#", text="#")
+        self.tabla_sel.heading("ID", text="Identificación")
+        self.tabla_sel.heading("serie", text="Serie")
+        self.tabla_sel.heading("valor", text="V nominal")
+        self.tabla_sel.heading("unidad", text="Unidad")
+
+        self.tabla_sel.column("#", width=30, anchor="center")
+        self.tabla_sel.column("ID", width=90, anchor="center")
+        self.tabla_sel.column("serie", width=90, anchor="center")
+        self.tabla_sel.column("valor", width=90, anchor="center")
+        self.tabla_sel.column("unidad", width=70, anchor="center")
+        self.tabla_sel.pack(side="left", padx=5, pady=20, anchor="n")
+
+        self.label_suma_nominal = ctk.CTkLabel(
+            self.frame_registro, text="Suma Nominal: 0 kg", font=("Cambria", 12)
+        )
+        self.label_suma_nominal.place(x=990, y=250)
+
+        # ------Condiciones ----------------
+        # _------------------condiciones----
+        self.frame_R_condiciones = ctk.CTkFrame(
+            self.frame_registro, width=450, height=45
+        )
+        self.frame_R_condiciones.place(x=380, y=320)
+        self.frame_R_condiciones.pack_propagate(False)
+
+        self.frame_r_bar = ctk.CTkFrame(self.frame_R_condiciones, width=100, height=30)
+        self.frame_r_bar.pack(side="left", expand=True, padx=10)
+        self.frame_r_bar.pack_propagate(False)
+
+        self.label_barI = ctk.CTkLabel(
+            self.frame_r_bar, text="--", font=("Cambria", 15)
+        )
+        self.label_barI.pack(expand=True)
+
+        self.frame_r_pres = ctk.CTkFrame(self.frame_R_condiciones, width=100, height=30)
+        self.frame_r_pres.pack(side="left", expand=True)
+        self.frame_r_pres.pack_propagate(False)
+
+        self.label_higI = ctk.CTkLabel(
+            self.frame_r_pres, text="--", font=("Cambria", 15)
+        )
+        self.label_higI.pack(expand=True)
+
+        self.frame_r_tem = ctk.CTkFrame(self.frame_R_condiciones, width=100, height=30)
+        self.frame_r_tem.pack(side="left", expand=True)
+        self.frame_r_tem.pack_propagate(False)
+
+        self.label_temI = ctk.CTkLabel(
+            self.frame_r_tem, text="--", font=("Cambria", 15)
+        )
+        self.label_temI.pack(expand=True)
+
+        # ---------condiciones finales ------
+
+        self.frame_cf = ctk.CTkFrame(self.frame_registro, width=450, height=45)
+        self.frame_cf.place(x=380, y=370)
+        self.frame_cf.pack_propagate(False)
+
+        self.frame_barF = ctk.CTkFrame(self.frame_cf, width=100, height=30)
+        self.frame_barF.pack(side="left", expand=True, padx=10)
+        self.frame_barF.pack_propagate(False)
+
+        self.label_barF = ctk.CTkLabel(
+            self.frame_barF, text="---", font=("Cambria", 15)
+        )
+        self.label_barF.pack(expand=True)
+
+        self.frame_higF = ctk.CTkFrame(self.frame_cf, width=100, height=30)
+        self.frame_higF.pack(side="left", expand=True)
+        self.frame_higF.pack_propagate(False)
+        self.label_higF = ctk.CTkLabel(
+            self.frame_higF, text="---", font=("Cambria", 15)
+        )
+        self.label_higF.pack(expand=True)
+
+        self.frame_temF = ctk.CTkFrame(self.frame_cf, width=100, height=30)
+        self.frame_temF.pack(side="left", expand=True)
+        self.frame_temF.pack_propagate(False)
+
+        self.label_temF = ctk.CTkLabel(
+            self.frame_temF, text="---", font=("Cambria", 15)
+        )
+        self.label_temF.pack(expand=True)
+
+        # ------Btonoes de condiones------
+        imagen_C = Image.open(ruta(os.path.join("Icon", "escribir.png")))
+        icon_C = ctk.CTkImage(light_image=imagen_C, dark_image=imagen_C, size=(30, 30))
+        self.btn_CI = ctk.CTkButton(
+            self.frame_botones_EX,
+            text="Registrar CI",
+            width=150,
+            height=10,
+            corner_radius=20,
+            border_color="white",
+            border_width=1,
+            command=self.registrar_CI,
+            image=icon_C,
+        )
+
+        self.btn_CI.grid(row=2, column=1, padx=5, pady=10)
+
+        # self.btn_CI.pack(side="top", expand=True, padx=10, pady=10)
+
+        self.btn_CF = ctk.CTkButton(
+            self.frame_botones_EX,
+            text="Registrar CF",
+            width=150,
+            height=10,
+            corner_radius=20,
+            border_color="white",
+            border_width=1,
+            command=self.registrar_CF,
+            image=icon_C,
+        )
+
+        self.btn_CF.grid(row=3, column=1, padx=5, pady=10)
+
+        # --------Botones de borrar registro o borrar todo-------
+
+        imagen_borrar = Image.open(ruta(os.path.join("Icon", "borrar.png")))
+        icon_borrar = ctk.CTkImage(
+            light_image=imagen_borrar, dark_image=imagen_borrar, size=(30, 30)
+        )
+
+        self.btn_borrar_pesa = ctk.CTkButton(
+            self.frame_botones_EX,
+            text="Borrar Pesa",
+            command=self.eliminar_ultima_pesa,
+            width=150,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            image=icon_borrar,
+        )
+        self.btn_borrar_pesa.grid(row=4, column=0, padx=5, pady=10)
+
+        imagen_borrar_indicacion = Image.open(
+            ruta(os.path.join("Icon", "borrarRojo.png"))
+        )
+        icon_borrar_indicacion = ctk.CTkImage(
+            light_image=imagen_borrar_indicacion,
+            dark_image=imagen_borrar_indicacion,
+            size=(30, 30),
+        )
+
+        self.btn_borrar_indicacion = ctk.CTkButton(
+            self.frame_botones_EX,
+            text="Borrar indicacion",
+            command=self.eliminar_ultima_indicacion,
+            width=150,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            image=icon_borrar_indicacion,
+        )
+        self.btn_borrar_indicacion.grid(row=4, column=1, padx=5, pady=10)
+
+    def menu(self):
+        self.menu = CTkMenuBar(master=self)
+        self.b1 = self.menu.add_cascade("Archivo", command=self.abrir_modelos)
+        self.b2_puerto_bar = self.menu.add_cascade("Barometro")
+        self.dropdown_puerto_bar = CustomDropdownMenu(widget=self.b2_puerto_bar)
+        self.b3_puerto_higro = self.menu.add_cascade("Higrometro")
+        self.dropdown_puerto_higro = CustomDropdownMenu(widget=self.b3_puerto_higro)
+        self.b4 = self.menu.add_cascade(
+            "Leer xlsx", command=self.master.cargar_excel_calibracion
+        )
+        self.b5 = self.menu.add_cascade(
+            "Cargar Prueba", command=self.cargar_datos_desde_excel
+        )
+        self.b6 = self.menu.add_cascade("Nueva Prueba", command=self.nueva_prueba)
+
+        puertos = serial.tools.list_ports.comports()
+        if not puertos:
+            self.dropdown_puerto_bar.add_command(label="No se encontraron puertos")
+            self.dropdown_puerto_higro.add_command(label="No se encontraron puertos")
+        else:
+            for i in puertos:
+                self.dropdown_puerto_bar.add_option(
+                    option=i.device,
+                    command=lambda puerto=i.device: self.seleccionar_puerto_bar(puerto),
+                    icon=ruta(os.path.join("Icon", "vga_cable.png")),
+                )
+                self.dropdown_puerto_higro.add_option(
+                    option=i.device,
+                    command=lambda puerto=i.device: self.seleccionar_puerto_higro(
+                        puerto
+                    ),
+                    icon=ruta(os.path.join("Icon", "vga_cable.png")),
+                )
+
+    def actualizar_peso(self):
+        global Lectura_barometro, LecturaT1, LecturaT2
+        try:
+            val_menos = "{:.2f}".format(float(Lectura_barometro))
+            self.label_presion.configure(text=f"{val_menos} Pa")
+            self.label_temperatura.configure(text=f"{LecturaT1} °C")
+            self.label_higrometro.configure(text=f"{LecturaH1} %")
+        except Exception as e:
+            print(f"error -{e}")
+
+        lecture = self.shell.peso_instantaneo()
+
+        if len(lecture) >= 3:
+            try:
+                peso_r = int(float(lecture[2]))
+                self.label_peso.configure(text=str(peso_r))
+                self.label_neto.configure(text=f"Neto: {peso_r} kg", text_color="white")
+            except ValueError:
+                pass
+
+        if len(lecture) >= 3:
+            wg = lecture[2]
+            self.label_peso.configure(text=wg)
+
+            if lecture[1] == "S":
+                self.label_peso.configure(text_color="#158A30")
+            else:
+                self.label_peso.configure(text_color="#B52C19")
+
+            valor_tara = self.shell.obtener_tara()
+            self.label_tara.configure(text=f"Tara: {valor_tara}", text_color="#FF6021")
+
+        self.after(500, self.actualizar_peso)
+
+    def abrir_modelos(self):
+        ruta = askopenfilename(
+            title="Seleccionar archivo", filetypes=[("Archivos de Excel", "*.xlsx")]
+        )
+
+        if ruta:
+            try:
+                wb = openpyxl.load_workbook(ruta, data_only=True)
+
+                if "Equipo CA" in wb.sheetnames:
+                    hoja = wb["Equipo CA"]
+                    self.equipos_ca = {}
+                else:
+                    CTkMessagebox(
+                        title="Error",
+                        message='La hoja "Equipo CA" no se encuentra en el archivo',
+                        icon="error",
+                    )
+                    return
+
+                lista_sensores = []
+                for fila in hoja.iter_rows(min_row=2, max_col=10, values_only=True):
+                    if fila[0] is not None:
+                        a = str(fila[0]).strip()
+                        b = str(fila[1]).strip() if fila[1] is not None else ""
+                        c = str(fila[2]).strip() if fila[2] is not None else ""
+                        d = str(fila[3]).strip() if fila[3] is not None else ""
+                        e = str(fila[5]).strip() if fila[5] is not None else ""
+                        h = str(fila[7]).strip() if fila[7] is not None else ""
+                        sensor_info = f"{d}, {e}, {h}".strip(", ")
+
+                        self.equipos_ca[sensor_info] = {
+                            "key": a,
+                            "magnitud": b,
+                            "indicacion": c,
+                            "marca": d,
+                            "modelo": e,
+                            "serie_sensor": h,
+                        }
+
+                        if sensor_info not in lista_sensores:
+                            lista_sensores.append(sensor_info)
+                self.lista_medidores = lista_sensores
+                self.combo_presion.configure(values=lista_sensores)
+                self.combo_higrometro.configure(values=lista_sensores)
+                self.combo_temperatura.configure(values=lista_sensores)
+
+                if "Equipo Pesas" in wb.sheetnames:
+                    hoja_pesas = wb["Equipo Pesas"]
+                    self.pesas = {}  # Diccionario maestro local
+                    self.lista_pesas_completa = []
+
+                    for idx, i in enumerate(
+                        hoja_pesas.iter_rows(min_row=2, max_col=12, values_only=True)
+                    ):
+                        if i[2] is not None:
+                            a = str(i[0]).strip()
+                            b = str(i[1]).strip() if i[1] is not None else ""
+                            c = str(i[2]).strip() if i[2] is not None else ""
+                            e = str(i[4]).strip() if i[4] is not None else ""
+                            f = str(i[5]).strip() if i[5] is not None else ""
+                            g = str(i[6]).strip() if i[6] is not None else ""
+                            h = str(i[7]).strip() if i[7] is not None else ""
+                            j = str(i[9]).strip() if i[9] is not None else ""
+                            k = str(i[10]).strip() if i[10] is not None else ""
+
+                            # --- CORRECCIÓN DE LIMPIEZA TOTAL (Elimina espacios ocultos como "no " o "si ") ---
+                            sust = (
+                                str(i[11]).strip().lower()
+                                if i[11] is not None
+                                else "no"
+                            )
+
+                            pesa_key = f"{c} | {f} | {j}{k}"
+                            self.pesas[pesa_key] = {
+                                "key": a,
+                                "magnitud": b,
+                                "id": c,
+                                "modelo": e,
+                                "serie": f,
+                                "juego": g,
+                                "id_pesa": h,
+                                "nominal": j,
+                                "unidad": k,
+                                "sustitucion": sust,
+                            }
+                            self.lista_pesas_completa.append(pesa_key)
+
+                CTkMessagebox(
+                    title="Exito",
+                    message="Modelos cargados correctamente.",
+                    icon="check",
+                )
+
+            except Exception as e:
+                CTkMessagebox(
+                    title="Error",
+                    message=f"Error al abrir el archivo: {e}",
+                    icon="cancel",
+                )
+                return
+
+    def seleccionar_puerto_higro(self, puerto):
+        if conectar_higrometro(puerto):
+            self.hilo_higro = threading.Thread(target=read_hidro, daemon=True)
+            self.hilo_higro.start()
+            CTkMessagebox(
+                title="Higrometro", message=f"conexion con {puerto}", icon="check"
+            )
+        else:
+            print("mal higro")
+
+    def seleccionar_puerto_bar(self, puerto):
+
+        if conectar_barometro(puerto):
+            self.hilo_bar = threading.Thread(target=read_bar, daemon=True)
+            self.hilo_bar.start()
+            CTkMessagebox(
+                title="Barometro",
+                message=f"Barometro conectado a {puerto}",
+                icon="check",
+            )
+        else:
+            CTkMessagebox(title="Barometro", message="Sin conexion", icon="cancel")
+
+    def preparar_tabla_dinamica(self):
+        try:
+            n_secciones = int(self.entry_secciones.get())
+            msg = CTkMessagebox(
+                title="Sentido de Entrada",
+                message="¿Por qué lado ingresará el vehículo a la plataforma?",
+                icon="question",
+                option_1="Derecha (Der-Izq)",
+                option_2="Izquierda (Izq-Der)",
+                option_3="Cancelar",
+            )
+            response = msg.get()
+            if response == "Cancelar" or response is None:
+                return
+
+            for i in self.tabla.get_children():
+                self.tabla.delete(i)
+
+            if response == "Derecha (Der-Izq)":
+                txt_ida = "Der.-Izq."
+                txt_vta = "Izq.-Der."
+            else:
+                txt_ida = "Izq.-Der."
+                txt_vta = "Der.-Izq."
+
+            self.sentido_actual = "IDA"
+            if hasattr(self, "btn_sentido"):
+                self.btn_sentido.configure(text="Sentido: IDA", fg_color="#16a085")
+
+            if n_secciones % 2 != 0:
+                seccion_centro = (n_secciones // 2) + 1
+                punto_insercion_par = -1
+            else:
+                seccion_centro = -1
+                punto_insercion_par = (n_secciones // 2) + 1
+
+            filas_totales = []
+
+            if response == "Derecha (Der-Izq)":
+                for s in range(1, n_secciones):
+                    if s == punto_insercion_par:
+                        filas_totales.append((txt_ida, "Centro", "---"))
+                    sec_str = "Centro" if s == seccion_centro else str(s)
+                    filas_totales.append((txt_ida, sec_str, "---"))
+
+                for s in range(n_secciones, 1, -1):
+                    if s == punto_insercion_par - 1:
+                        filas_totales.append((txt_vta, "Centro", "---"))
+                    sec_str = "Centro" if s == seccion_centro else str(s)
+                    filas_totales.append((txt_vta, sec_str, "---"))
+            else:
+                for s in range(n_secciones, 1, -1):
+                    if s == punto_insercion_par - 1:
+                        filas_totales.append((txt_ida, "Centro", "---"))
+                    sec_str = "Centro" if s == seccion_centro else str(s)
+                    filas_totales.append((txt_ida, sec_str, "---"))
+
+                for s in range(1, n_secciones):
+                    if s == punto_insercion_par:
+                        filas_totales.append((txt_vta, "Centro", "---"))
+                    sec_str = "Centro" if s == seccion_centro else str(s)
+                    filas_totales.append((txt_vta, sec_str, "---"))
+
+            for sent, sec, ind in filas_totales:
+                self.tabla.insert("", "end", values=(sent, sec, ind))
+
+        except ValueError:
+            CTkMessagebox(
+                title="Error", message="Número de secciones inválido", icon="cancel"
+            )
+
+    def registrar_peso(self):
+        lectura = self.shell.peso_estable()
         if len(lectura) >= 3:
-            peso_estable = int(lectura[2])  # [cite: 1]
+            peso = lectura[2]
 
-            # Determinamos la posición actual
-            pos = self.posiciones[self.indice_posicion % len(self.posiciones)]
+            for item in self.tabla.get_children():
+                v = self.tabla.item(item)["values"]
 
-            # Insertamos en la tabla reutilizada
-            self.tabla.insert(
-                "", "end", text=pos, values=(pos, f"{peso_estable}")
-            )  # [cite: 1]
+                if str(v[2]).strip() == "---":
+                    self.tabla.item(item, values=(v[0], v[1], peso))
+                    self.tabla.selection_set(item)
+                    self.tabla.see(item)
 
-            self.indice_posicion += 1
-            self.tabla.yview_moveto(1)  # [cite: 1]
+                    self.calcular_promedios_secciones()
+                    return
 
-            # Reutilizamos el cálculo de desviación de la clase padre
-            self.desviacion()  # [cite: 1]
+            CTkMessagebox(
+                title="Aviso",
+                message="Todas las indicaciones de la prueba están completas.",
+                icon="info",
+            )
         else:
             CTkMessagebox(title="Error", message="Peso inestable", icon="cancel")
 
+    def cambiar_sentido(self):
+        if self.sentido_actual == "IDA":
+            self.sentido_actual = "VUELTA"
+            self.btn_sentido.configure(text="Sentido: Izq-Der", fg_color="#2980b9")
+        else:
+            self.sentido_actual = "IDA"
+            self.btn_sentido.configure(text="Sentido: Der-Izq", fg_color="#16a085")
 
+        CTkMessagebox(title="Sentido", message=f"Cambiado a: {self.sentido_actual}")
+
+    def calcular_promedios_secciones(self):
+        """Extrae datos de la tabla compacta vertical y calcula el promedio con Pandas"""
+        datos_para_promediar = []
+
+        for item in self.tabla.get_children():
+            v = self.tabla.item(item)["values"]
+
+            if (
+                len(v) >= 3
+                and v[1]
+                and str(v[2]).strip() != "---"
+                and str(v[2]).strip() != ""
+            ):
+                try:
+                    datos_para_promediar.append(
+                        {"seccion": str(v[1]).strip(), "valor": float(v[2])}
+                    )
+                except ValueError:
+                    pass
+
+        if not datos_para_promediar:
+            for i in self.tabla_promedios.get_children():
+                self.tabla_promedios.delete(i)
+            return
+
+        df = pd.DataFrame(datos_para_promediar)
+
+        resumen = df.groupby("seccion")["valor"].mean().reset_index()
+
+        for i in self.tabla_promedios.get_children():
+            self.tabla_promedios.delete(i)
+
+        for _, fila in resumen.iterrows():
+            self.tabla_promedios.insert(
+                "", "end", values=(fila["seccion"], f"{fila['valor']:.2f}")
+            )
+
+    def guardar_en_excel_existente(self):
+        """Guarda todos los bloques de Excentricidad, permitiendo acumular infinitas hojas dinámicas (Excentricidad 3, 4, etc.)"""
+        from datetime import datetime
+
+        filas_tabla = self.tabla.get_children()
+        if not filas_tabla:
+            CTkMessagebox(
+                title="Aviso",
+                message="No hay datos de indicaciones en la tabla para guardar.",
+                icon="warning",
+            )
+            return
+
+        ruta_directa = getattr(self.master, "archivo_calibracion_actual", None)
+
+        if not ruta_directa:
+            self.guardar_como_nuevo_excel()
+            return
+
+        # if not ruta_directa:
+        #     CTkMessagebox(
+        #         title="Archivo Faltante",
+        #         message="Cargue un archivo de calibración antes de guardar.",
+        #         icon="warning",
+        #     )
+        #     return
+
+        try:
+            wb = openpyxl.load_workbook(ruta_directa)
+
+            if (
+                not hasattr(self, "hoja_actual_guardada")
+                or self.hoja_actual_guardada is None
+            ):
+                if "Excentricidad" not in wb.sheetnames:
+                    nombre_hoja = "Excentricidad"
+                else:
+                    contador = 2
+                    while f"Excentricidad {contador}" in wb.sheetnames:
+                        contador += 1
+                    nombre_hoja = f"Excentricidad {contador}"
+
+                self.hoja_actual_guardada = nombre_hoja
+                hoja = wb.create_sheet(title=nombre_hoja)
+            else:
+                nombre_hoja = self.hoja_actual_guardada
+                if nombre_hoja not in wb.sheetnames:
+                    hoja = wb.create_sheet(title=nombre_hoja)
+                else:
+                    hoja = wb[nombre_hoja]
+                    hoja.delete_rows(1, hoja.max_row + 1)
+
+            hoja.views.sheetView[0].showGridLines = True
+
+            color_encabezado = PatternFill(
+                start_color="D9EAD3", end_color="D9EAD3", fill_type="solid"
+            )
+            fuente_negrita = Font(bold=True)
+
+            def agregar_titulo_bloque(texto):
+                hoja.append([texto])
+                celda = hoja.cell(row=hoja.max_row, column=1)
+                celda.fill = color_encabezado
+                celda.font = fuente_negrita
+
+            agregar_titulo_bloque("Indicacion")
+            hoja.append(["Sentido", "Sección", "Valor (kg)"])
+
+            for item in filas_tabla:
+                v = self.tabla.item(item)["values"]
+                val_ind = (
+                    float(v[2])
+                    if str(v[2]).strip() != "---" and str(v[2]).strip() != ""
+                    else v[2]
+                )
+                hoja.append([v[0], v[1], val_ind])
+
+            hoja.append([])
+
+            agregar_titulo_bloque("Promedios por Sección")
+            hoja.append(["Sección", "Promedio (kg)"])
+
+            for item in self.tabla_promedios.get_children():
+                vp = self.tabla_promedios.item(item)["values"]
+                try:
+                    hoja.append([vp[0], float(vp[1])])
+                except ValueError:
+                    hoja.append([vp[0], vp[1]])
+
+            hoja.append([])
+
+            agregar_titulo_bloque("Pesas")
+            hoja.append(
+                [
+                    "Key",
+                    "Magnitud",
+                    "Identificación",
+                    "Modelo",
+                    "Serie",
+                    "Juego",
+                    "Id_pesa",
+                    "Nominal",
+                    "Unidad",
+                ]
+            )
+
+            if hasattr(self, "llaves_actuales") and self.llaves_actuales:
+                diccionario_local_pesas = getattr(self, "pesas", {})
+                for llave in self.llaves_actuales:
+                    d = diccionario_local_pesas.get(llave)
+                    if d:
+                        hoja.append(
+                            [
+                                d.get("key", ""),
+                                d.get("magnitud", ""),
+                                d.get("id", ""),
+                                d.get("modelo", ""),
+                                d.get("serie", ""),
+                                d.get("juego", ""),
+                                d.get("id_pesa", ""),
+                                d.get("nominal", ""),
+                                d.get("unidad", ""),
+                            ]
+                        )
+            else:
+                hoja.append(["No se seleccionaron pesas para esta prueba"])
+
+            hoja.append([])
+
+            agregar_titulo_bloque("Medidores")
+            hoja.append(
+                [
+                    "Magnitud",
+                    "Valor Inicial (Ci)",
+                    "Hora Inicial",
+                    "Valor Final (Cf)",
+                    "Hora Final",
+                ]
+            )
+
+            time_stamp_actual = datetime.now().strftime("%H:%M:%S")
+
+            val_presion_interfaz = (
+                self.label_presion.cget("text")
+                if hasattr(self, "label_presion")
+                else "---"
+            )
+            val_presion_f_interfaz = (
+                self.label_presion_f.cget("text")
+                if hasattr(self, "label_presion_f")
+                else "---"
+            )
+            val_humedad_interfaz = (
+                self.label_higrometro.cget("text")
+                if hasattr(self, "label_higrometro")
+                else "---"
+            )
+            val_humedad_f_interfaz = (
+                self.label_higrometro_f.cget("text")
+                if hasattr(self, "label_higrometro_f")
+                else "---"
+            )
+            val_temp_interfaz = (
+                self.label_temperatura.cget("text")
+                if hasattr(self, "label_temperatura")
+                else "---"
+            )
+            val_temp_f_interfaz = (
+                self.label_temperatura_f.cget("text")
+                if hasattr(self, "label_temperatura_f")
+                else "---"
+            )
+
+            if val_presion_f_interfaz == "---" or val_presion_f_interfaz == "":
+                val_presion_f_excel = val_presion_interfaz
+                val_humedad_f_excel = val_humedad_interfaz
+                val_temp_f_excel = val_temp_interfaz
+                hora_inicial_excel = time_stamp_actual
+                hora_final_excel = time_stamp_actual
+            else:
+                val_presion_f_excel = val_presion_f_interfaz
+                val_humedad_f_excel = val_humedad_f_interfaz
+                val_temp_f_excel = val_temp_f_interfaz
+                hora_inicial_excel = getattr(
+                    self, "hora_inicio_prueba", time_stamp_actual
+                )
+                hora_final_excel = time_stamp_actual
+
+            if (
+                not hasattr(self, "hora_inicio_prueba")
+                or self.hora_inicio_prueba is None
+            ):
+                self.hora_inicio_prueba = time_stamp_actual
+
+            valores_ambientales = [
+                [
+                    "Presión",
+                    val_presion_interfaz,
+                    hora_inicial_excel,
+                    val_presion_f_excel,
+                    hora_final_excel,
+                ],
+                [
+                    "Humedad",
+                    val_humedad_interfaz,
+                    hora_inicial_excel,
+                    val_humedad_f_excel,
+                    hora_final_excel,
+                ],
+                [
+                    "Temperatura",
+                    val_temp_interfaz,
+                    hora_inicial_excel,
+                    val_temp_f_excel,
+                    hora_final_excel,
+                ],
+            ]
+
+            for linea in valores_ambientales:
+                hoja.append(linea)
+
+            hoja.append([])
+
+            for col in hoja.columns:
+                max_len = max(len(str(cell.value or "")) for cell in col)
+                col_letter = openpyxl.utils.get_column_letter(col[0].column)
+                hoja.column_dimensions[col_letter].width = max(max_len + 4, 15)
+
+            wb.save(ruta_directa)
+            CTkMessagebox(
+                title="Guardado Exitoso",
+                message=f"Se han respaldado todos los datos correctamente en la pestaña:\n'{nombre_hoja}'",
+                icon="check",
+            )
+
+        except Exception as e:
+            CTkMessagebox(
+                title="Error de Archivo",
+                message=f"No se pudo guardar la información:\n{str(e)}",
+                icon="cancel",
+            )
+
+    def cargar_datos_desde_excel(self):
+        """Busca las pruebas de Excentricidad en el Excel y reconstruye cada bloque en su tabla correspondiente"""
+        ruta_directa = getattr(self.master, "archivo_calibracion_actual", None)
+        if not ruta_directa:
+            CTkMessagebox(
+                title="Archivo Faltante",
+                message="No hay ningún archivo cargado en el sistema.\nPor favor, ve al menú superior 'Archivo -> Cargar Prueba' primero.",
+                icon="warning",
+            )
+            return
+
+        try:
+            wb = openpyxl.load_workbook(ruta_directa, data_only=True)
+            hojas_excentricidad = [
+                hoja for hoja in wb.sheetnames if hoja.startswith("Excentricidad")
+            ]
+
+            if not hojas_excentricidad:
+                CTkMessagebox(
+                    title="Hoja no encontrada",
+                    message="El archivo cargado no contiene ninguna pestaña de 'Excentricidad'.",
+                    icon="info",
+                )
+                return
+
+            hoja_seleccionada = hojas_excentricidad[0]
+            if len(hojas_excentricidad) > 1:
+                lista_hojas_str = "\n".join([f"- {h}" for h in hojas_excentricidad])
+                dialogo = ctk.CTkInputDialog(
+                    text=f"Se encontraron las siguientes pruebas:\n{lista_hojas_str}\n\nEscribe el nombre exacto de la prueba que deseas cargar:",
+                    title="Seleccionar Prueba",
+                )
+                seleccion = dialogo.get_input()
+                if seleccion and seleccion.strip() in wb.sheetnames:
+                    hoja_seleccionada = seleccion.strip()
+                elif seleccion is None or seleccion.strip() == "":
+                    return
+                else:
+                    CTkMessagebox(
+                        title="Error", message="Nombre inválido.", icon="cancel"
+                    )
+                    return
+
+            hoja = wb[hoja_seleccionada]
+
+            for i in self.tabla.get_children():
+                self.tabla.delete(i)
+            for i in self.tabla_promedios.get_children():
+                self.tabla_promedios.delete(i)
+            for i in self.tabla_sel.get_children():
+                self.tabla_sel.delete(i)
+
+            bloque_actual = None
+            contador_pesas = 1
+            suma_total_pesas = 0.0
+            self.llaves_actuales = []
+
+            for fila in hoja.iter_rows(values_only=True):
+                if not fila or fila[0] is None:
+                    continue
+                primer_valor = str(fila[0]).strip()
+
+                if primer_valor == "Indicacion":
+                    bloque_actual = "INDICACION"
+                    continue
+                elif primer_valor == "Promedios por Sección":
+                    bloque_actual = "PROMEDIOS"
+                    continue
+                elif primer_valor == "Pesas":
+                    bloque_actual = "PESAS"
+                    continue
+                elif primer_valor == "Medidores":
+                    bloque_actual = "MEDIDORES"
+                    continue
+
+                if bloque_actual == "INDICACION":
+                    if primer_valor == "Sentido":
+                        continue
+                    self.tabla.insert(
+                        "",
+                        "end",
+                        values=(
+                            str(fila[0]).strip(),
+                            str(fila[1]).strip(),
+                            fila[2] if fila[2] is not None else "---",
+                        ),
+                    )
+
+                elif bloque_actual == "PROMEDIOS":
+                    if primer_valor == "Sección":
+                        continue
+                    self.tabla_promedios.insert(
+                        "",
+                        "end",
+                        values=(
+                            str(fila[0]).strip(),
+                            (
+                                f"{fila[1]:.2f}"
+                                if isinstance(fila[1], (int, float))
+                                else str(fila[1])
+                            ),
+                        ),
+                    )
+
+                elif bloque_actual == "PESAS":
+                    if primer_valor in [
+                        "Key",
+                        "No se seleccionaron pesas para esta prueba",
+                    ]:
+                        continue
+
+                    id_pesa = str(fila[2]).strip() if fila[2] is not None else ""
+                    serie_pesa = str(fila[4]).strip() if fila[4] is not None else ""
+                    nominal_pesa = fila[7] if fila[7] is not None else "0"
+                    unidad_pesa = str(fila[8]).strip() if fila[8] is not None else "kg"
+                    key_pesa = str(fila[0]).strip() if fila[0] is not None else ""
+
+                    if key_pesa:
+                        pesa_key_completa = (
+                            f"{id_pesa} | {serie_pesa} | {nominal_pesa}{unidad_pesa}"
+                        )
+                        self.llaves_actuales.append(pesa_key_completa)
+
+                    self.tabla_sel.insert(
+                        "",
+                        "end",
+                        values=(
+                            contador_pesas,
+                            id_pesa,
+                            serie_pesa,
+                            nominal_pesa,
+                            unidad_pesa,
+                        ),
+                    )
+                    contador_pesas += 1
+
+                    try:
+                        val = float(nominal_pesa)
+                        if unidad_pesa.lower() in ["g", "gramos", "g."]:
+                            suma_total_pesas += val / 1000.0
+                        else:
+                            suma_total_pesas += val
+                    except ValueError:
+                        pass
+
+                elif bloque_actual == "MEDIDORES":
+                    if primer_valor == "Magnitud":
+                        continue
+                    val_ci = str(fila[1]).strip() if fila[1] is not None else "---"
+                    val_cf = str(fila[2]).strip() if fila[2] is not None else "---"
+
+                    if "Presión" in primer_valor:
+                        if hasattr(self, "label_presion"):
+                            self.label_presion.configure(text=val_ci)
+                        if hasattr(self, "label_presion_f"):
+                            self.label_presion_f.configure(text=val_cf)
+                    elif "Humedad" in primer_valor:
+                        if hasattr(self, "label_higrometro"):
+                            self.label_higrometro.configure(text=val_ci)
+                        if hasattr(self, "label_higrometro_f"):
+                            self.label_higrometro_f.configure(text=val_cf)
+                    elif "Temperatura" in primer_valor:
+                        if hasattr(self, "label_temperatura"):
+                            self.label_temperatura.configure(text=val_ci)
+                        if hasattr(self, "label_temperatura_f"):
+                            self.label_temperatura_f.configure(text=val_cf)
+
+            if hasattr(self, "label_suma_nominal"):
+                self.label_suma_nominal.configure(
+                    text=f"Total: {suma_total_pesas:.2f} kg"
+                )
+
+            CTkMessagebox(
+                title="Éxito",
+                message=f"Se cargaron correctamente los datos de '{hoja_seleccionada}'.",
+                icon="check",
+            )
+
+        except Exception as e:
+            CTkMessagebox(
+                title="Error",
+                message=f"No se pudieron cargar los datos de excentricidad:\n{str(e)}",
+                icon="cancel",
+            )
+
+    def nueva_prueba(self):
+        """Limpia las tablas de la interfaz para iniciar una captura en limpio desde cero"""
+        msg = CTkMessagebox(
+            title="¿Nueva Prueba?",
+            message="¿Estás seguro de comenzar una nueva prueba? Esto limpiará las tablas de la pantalla actual (los datos en el Excel guardado no se borrarán).",
+            icon="question",
+            option_1="Sí",
+            option_2="No",
+        )
+        if msg.get() == "Sí":
+            for i in self.tabla.get_children():
+                self.tabla.delete(i)
+            for i in self.tabla_promedios.get_children():
+                self.tabla_promedios.delete(i)
+            self.sentido_actual = "IDA"
+            self.hoja_actual_guardada = None
+            if hasattr(self, "entry_secciones"):
+                self.entry_secciones.delete(0, "end")
+            if hasattr(self, "btn_sentido"):
+                self.btn_sentido.configure(text="Sentido: IDA", fg_color="#16a085")
+            CTkMessagebox(
+                title="Listo",
+                message="Pantalla restablecida. Introduce las secciones para iniciar.",
+                icon="check",
+            )
+
+    def mostrar_selector_pesas(self):
+        """Filtra el diccionario de pesas y muestra en la ventana emergente solo los patrones (sustitucion == 'no')"""
+        diccionario_pesas = getattr(self, "pesas", {})
+
+        # Filtramos asegurando limpieza de strings
+        lista_patrones = [
+            llave
+            for llave, datos in diccionario_pesas.items()
+            if str(datos.get("sustitucion")).strip().lower() == "no"
+        ]
+
+        if lista_patrones:
+            Ventana_Pesas(self, lista_patrones, self.actualizar_tabla_pesas)
+        else:
+            CTkMessagebox(
+                title="Sin registros",
+                message="No se encontraron elementos marcados como patrones ('no') en la columna L del archivo cargado.",
+                icon="warning",
+            )
+
+    def actualizar_tabla_pesas(self, seleccionadas):
+        """Recibe las pesas seleccionadas y las acumula con las ya existentes sin borrar"""
+        if not hasattr(self, "llaves_actuales") or self.llaves_actuales is None:
+            self.llaves_actuales = []
+
+        for llave in seleccionadas:
+            if llave not in self.llaves_actuales:
+                self.llaves_actuales.append(llave)
+
+        for item in self.tabla_sel.get_children():
+            self.tabla_sel.delete(item)
+
+        suma_total = 0.0
+        diccionario_pesas = getattr(self, "pesas", {})
+
+        for i, llave in enumerate(self.llaves_actuales, start=1):
+            datos = diccionario_pesas.get(llave)
+            if datos:
+                self.tabla_sel.insert(
+                    "",
+                    "end",
+                    values=(
+                        i,
+                        datos["id"],
+                        datos["serie"],
+                        datos["nominal"],
+                        datos["unidad"],
+                    ),
+                )
+
+                try:
+                    val = float(datos["nominal"])
+                    unidad = str(datos["unidad"]).lower().strip()
+                    if unidad in ["g", "gramos", "g."]:
+                        suma_total += val / 1000.0
+                    else:
+                        suma_total += val
+                except ValueError:
+                    pass
+
+        self.label_suma_nominal.configure(text=f"Total: {suma_total:.2f} kg")
+
+    def eliminar_ultima_pesa(self):
+        """Elimina únicamente la última pesa o sustitución agregada a la lista"""
+        if hasattr(self, "llaves_actuales") and self.llaves_actuales:
+            self.llaves_actuales.pop()
+
+            for item in self.tabla_sel.get_children():
+                self.tabla_sel.delete(item)
+
+            suma_total = 0.0
+            diccionario_pesas = getattr(self, "pesas", {})
+
+            for i, llave in enumerate(self.llaves_actuales, start=1):
+                datos = diccionario_pesas.get(llave)
+                if datos:
+                    self.tabla_sel.insert(
+                        "",
+                        "end",
+                        values=(
+                            i,
+                            datos["id"],
+                            datos["serie"],
+                            datos["nominal"],
+                            datos["unidad"],
+                        ),
+                    )
+                    try:
+                        val = float(datos["nominal"])
+                        unidad = str(datos["unidad"]).lower().strip()
+                        if unidad in ["g", "gramos", "g."]:
+                            suma_total += val / 1000.0
+                        else:
+                            suma_total += val
+                    except ValueError:
+                        pass
+
+            self.label_suma_nominal.configure(text=f"Total: {suma_total:.2f} kg")
+
+        else:
+            CTkMessagebox(
+                title="Aviso",
+                message="No hay pesas en la lista para eliminar.",
+                icon="info",
+            )
+
+    def mostrar_selector_sustitucion(self):
+        """Filtra el diccionario de pesas y muestra en la ventana emergente solo las de sustitución"""
+        diccionario_pesas = getattr(self, "pesas", {})
+
+        lista_sustitucion = [
+            llave
+            for llave, datos in diccionario_pesas.items()
+            if datos.get("sustitucion") == "si"
+        ]
+
+        if lista_sustitucion:
+            Ventana_Pesas(self, lista_sustitucion, self.actualizar_tabla_pesas)
+        else:
+            CTkMessagebox(
+                title="Sin registros",
+                message="No se encontraron elementos marcados como sustitución ('si') en la columna L del archivo cargado.",
+                icon="warning",
+            )
+
+    def registrar_CI(self):
+        T = self.label_temperatura.cget("text")
+        H = self.label_higrometro.cget("text")
+        P = self.label_presion.cget("text")
+
+        t_inst = self.combo_temperatura.get()
+        h_inst = self.combo_higrometro.get()
+        p_inst = self.combo_presion.get()
+
+        self.condiciones_iniciales = {
+            "Temperatura": {"Valor": T, "Instrumento": t_inst},
+            "Humedad": {"Valor": H, "Instrumento": h_inst},
+            "Presion": {"Valor": P, "Instrumento": p_inst},
+            "Hora": datetime.now().strftime("%H:%M:%S"),
+        }
+        self.label_barI.configure(text=P, text_color="#158A30")
+        self.label_higI.configure(text=H, text_color="#158A30")
+        self.label_temI.configure(text=T, text_color="#158A30")
+
+        self.btn_CI.configure(fg_color="#158A30")
+
+    def registrar_CF(self):
+        T = self.label_temperatura.cget("text")
+        H = self.label_higrometro.cget("text")
+        P = self.label_presion.cget("text")
+
+        t_inst = self.combo_temperatura.get()
+        h_inst = self.combo_higrometro.get()
+        p_inst = self.combo_presion.get()
+
+        self.condiciones_finales = {
+            "Temperatura": {"Valor": T, "Instrumento": t_inst},
+            "Humedad": {"Valor": H, "Instrumento": h_inst},
+            "Presion": {"Valor": P, "Instrumento": p_inst},
+            "Hora": datetime.now().strftime("%H:%M:%S"),
+        }
+        self.label_barF.configure(text=P, text_color="#D95E4A")
+        self.label_higF.configure(text=H, text_color="#D95E4A")
+        self.label_temF.configure(text=T, text_color="#D95E4A")
+
+        self.btn_CF.configure(fg_color="#D95E4A")
+
+    def eliminar_ultima_indicacion(self):
+        """Busca el último peso registrado en la tabla de indicaciones y lo restablece a '---'"""
+        filas = self.tabla.get_children()
+        if not filas:
+            CTkMessagebox(
+                title="Aviso",
+                message="La tabla está vacía. Genera las secciones primero.",
+                icon="info",
+            )
+            return
+
+        for item in reversed(filas):
+            v = self.tabla.item(item)["values"]
+
+            if str(v[2]).strip() != "---":
+                self.tabla.item(item, values=(v[0], v[1], "---"))
+
+                self.tabla.selection_set(item)
+                self.tabla.see(item)
+
+                self.calcular_promedios_secciones()
+                return
+
+        CTkMessagebox(
+            title="Aviso",
+            message="No hay ninguna indicación registrada para eliminar.",
+            icon="info",
+        )
+
+    def guardar_como_nuevo_excel(self):
+        """Crea un archivo Excel completamente nuevo desde cero para salvar la prueba de Excentricidad"""
+        from datetime import datetime
+        from tkinter import filedialog
+
+        filas_tabla = self.tabla.get_children()
+        if not filas_tabla:
+            CTkMessagebox(
+                title="Aviso",
+                message="No hay datos de indicaciones en la tabla para exportar.",
+                icon="warning",
+            )
+            return
+
+        # 1. Solicitar al usuario la ruta y el nombre del nuevo archivo
+        ruta_guardar = filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Archivos de Excel", "*.xlsx")],
+            title="Guardar Prueba de Excentricidad",
+            initialfile=f"Prueba_Excentricidad_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.xlsx",
+        )
+
+        if not ruta_guardar:
+            return  # El usuario canceló la ventana de guardado
+
+        try:
+            # Crear un libro de Excel vacío desde cero
+            wb = openpyxl.Workbook()
+            hoja = wb.active
+            hoja.title = "Excentricidad"
+            hoja.views.sheetView[0].showGridLines = True  # Cuadrícula visible
+
+            # Estilos estándar del sistema
+            color_encabezado = PatternFill(
+                start_color="D9EAD3", end_color="D9EAD3", fill_type="solid"
+            )
+            fuente_negrita = Font(bold=True)
+
+            def agregar_titulo_bloque(texto):
+                hoja.append([texto])
+                celda = hoja.cell(row=hoja.max_row, column=1)
+                celda.fill = color_encabezado
+                celda.font = fuente_negrita
+
+            # =================================================================
+            # BLOQUE 1: INDICACIONES DE EXCENTRICIDAD
+            # =================================================================
+            agregar_titulo_bloque("Indicacion")
+            hoja.append(["Sentido", "Sección", "Valor (kg)"])
+
+            for item in filas_tabla:
+                v = self.tabla.item(item)["values"]
+                val_ind = (
+                    float(v[2])
+                    if str(v[2]).strip() != "---" and str(v[2]).strip() != ""
+                    else v[2]
+                )
+                hoja.append([v[0], v[1], val_ind])
+
+            hoja.append([])
+
+            # =================================================================
+            # BLOQUE 2: PROMEDIOS POR SECCIÓN (Pandas)
+            # =================================================================
+            agregar_titulo_bloque("Promedios por Sección")
+            hoja.append(["Sección", "Promedio (kg)"])
+
+            for item in self.tabla_promedios.get_children():
+                vp = self.tabla_promedios.item(item)["values"]
+                try:
+                    hoja.append([vp[0], float(vp[1])])
+                except ValueError:
+                    hoja.append([vp[0], vp[1]])
+
+            hoja.append([])
+
+            # =================================================================
+            # BLOQUE 3: PESAS PATRÓN Y SUSTITUCIÓN
+            # =================================================================
+            agregar_titulo_bloque("Pesas")
+            hoja.append(
+                [
+                    "Key",
+                    "Magnitud",
+                    "Identificación",
+                    "Modelo",
+                    "Serie",
+                    "Juego",
+                    "Id_pesa",
+                    "Nominal",
+                    "Unidad",
+                ]
+            )
+
+            if hasattr(self, "llaves_actuales") and self.llaves_actuales:
+                diccionario_local_pesas = getattr(self, "pesas", {})
+                for llave in self.llaves_actuales:
+                    d = diccionario_local_pesas.get(llave)
+                    if d:
+                        hoja.append(
+                            [
+                                d.get("key", ""),
+                                d.get("magnitud", ""),
+                                d.get("id", ""),
+                                d.get("modelo", ""),
+                                d.get("serie", ""),
+                                d.get("juego", ""),
+                                d.get("id_pesa", ""),
+                                d.get("nominal", ""),
+                                d.get("unidad", ""),
+                            ]
+                        )
+            else:
+                hoja.append(["No se seleccionaron pesas para esta prueba"])
+
+            hoja.append([])
+
+            # =================================================================
+            # BLOQUE 4: CONDICIONES AMBIENTALES COMPLETO (Ci, Cf y Horas)
+            # =================================================================
+            agregar_titulo_bloque("Medidores")
+            hoja.append(
+                [
+                    "Magnitud",
+                    "Valor Inicial (Ci)",
+                    "Hora Inicial",
+                    "Valor Final (Cf)",
+                    "Hora Final",
+                ]
+            )
+
+            time_stamp_actual = datetime.now().strftime("%H:%M:%S")
+
+            val_presion_interfaz = (
+                self.label_presion.cget("text")
+                if hasattr(self, "label_presion")
+                else "---"
+            )
+            val_presion_f_interfaz = (
+                self.label_presion_f.cget("text")
+                if hasattr(self, "label_presion_f")
+                else "---"
+            )
+            val_humedad_interfaz = (
+                self.label_higrometro.cget("text")
+                if hasattr(self, "label_higrometro")
+                else "---"
+            )
+            val_humedad_f_interfaz = (
+                self.label_higrometro_f.cget("text")
+                if hasattr(self, "label_higrometro_f")
+                else "---"
+            )
+            val_temp_interfaz = (
+                self.label_temperatura.cget("text")
+                if hasattr(self, "label_temperatura")
+                else "---"
+            )
+            val_temp_f_interfaz = (
+                self.label_temperatura_f.cget("text")
+                if hasattr(self, "label_temperatura_f")
+                else "---"
+            )
+
+            if val_presion_f_interfaz == "---" or val_presion_f_interfaz == "":
+                val_presion_f_excel = val_presion_interfaz
+                val_humedad_f_excel = val_humedad_interfaz
+                val_temp_f_excel = val_temp_interfaz
+                hora_inicial_excel = time_stamp_actual
+                hora_final_excel = time_stamp_actual
+            else:
+                val_presion_f_excel = val_presion_f_interfaz
+                val_humedad_f_excel = val_humedad_f_interfaz
+                val_temp_f_excel = val_temp_f_interfaz
+                hora_inicial_excel = getattr(
+                    self, "hora_inicio_prueba", time_stamp_actual
+                )
+                hora_final_excel = time_stamp_actual
+
+            valores_ambientales = [
+                [
+                    "Presión",
+                    val_presion_interfaz,
+                    hora_inicial_excel,
+                    val_presion_f_excel,
+                    hora_final_excel,
+                ],
+                [
+                    "Humedad",
+                    val_humedad_interfaz,
+                    hora_inicial_excel,
+                    val_humedad_f_excel,
+                    hora_final_excel,
+                ],
+                [
+                    "Temperatura",
+                    val_temp_interfaz,
+                    hora_inicial_excel,
+                    val_temp_f_excel,
+                    hora_final_excel,
+                ],
+            ]
+
+            for linea in valores_ambientales:
+                hoja.append(linea)
+
+            for col in hoja.columns:
+                max_len = max(len(str(cell.value or "")) for cell in col)
+                col_letter = openpyxl.utils.get_column_letter(col[0].column)
+                hoja.column_dimensions[col_letter].width = max(max_len + 4, 15)
+
+            wb.save(ruta_guardar)
+
+            self.master.archivo_calibracion_actual = ruta_guardar
+            self.hoja_actual_guardada = "Excentricidad"
+
+            CTkMessagebox(
+                title="Éxito",
+                message=f"Archivo nuevo creado y guardado con éxito en:\n{ruta_guardar}",
+                icon="check",
+            )
+
+        except Exception as e:
+            CTkMessagebox(
+                title="Error al exportar",
+                message=f"No se pudo crear el archivo nuevo:\n{str(e)}",
+                icon="cancel",
+            )
+
+
+class Error_Indicacion(ctk.CTkToplevel):
+    """
+    Ventana para el error de indicacion
+    """
+
+    def __init__(self, parent, master, shell, lista_instrumentos=None, ruta_excel=None):
+        super().__init__(parent)
+        self.master = master
+        self.shell = shell
+        self.lista_instrumentos = lista_instrumentos
+
+        if ruta_excel:
+            setattr(self, "ruta_excel", ruta_excel)
+
+        self.llaves_actuales = []
+        self.hoja_actual_guardada = None
+        self.hora_inicio = None
+
+        self.pesas = {}
+        self.lista_pesas = []
+
+        if ruta_excel:
+            self.cargar_modelos(ruta_excel)
+        self.title("Error de Indicación")
+        self.geometry("1200x800+190+20")
+        self.grab_set()
+        self.menu()
+        self.widgets()
+        self.actualizar_peso()
+
+    def cargar_modelos(self, ruta_excel):
+        try:
+            wb = openpyxl.load_workbook(ruta_excel, data_only=True)
+            if "Equipo Pesas" in wb.sheetnames:
+                hoja_pesas = wb["Equipo Pesas"]
+                for i in hoja_pesas.iter_rows(min_row=2, max_col=12, values_only=True):
+                    if i[2] is not None:
+                        c = str(i[2]).strip()
+                        f = str(i[5]).strip() if i[5] is not None else ""
+                        j = str(i[9]).strip() if i[9] is not None else ""
+                        k = str(i[10]).strip() if i[10] is not None else ""
+
+                        sust = str(i[11]).strip().lower() if i[11] is not None else "no"
+                        pesa_key = f"{c} | {f} | {j}{k}"
+
+                        self.pesas[pesa_key] = {
+                            "key": str(i[0]).strip(),
+                            "magnitud": str(i[1]).strip() if i[1] else "",
+                            "id": c,
+                            "modelo": str(i[4]).strip() if i[4] else "",
+                            "serie": f,
+                            "juego": str(i[6]).strip() if i[6] else "",
+                            "id_pesa": str(i[7]).strip() if i[7] else "",
+                            "nominal": j,
+                            "unidad": k,
+                            "sustitucion": sust,
+                        }
+                        self.lista_pesas_completa.append(pesa_key)
+        except Exception:
+            pass
+
+    def widgets(self):
+
+        self.frame_repetibilidad = ctk.CTkFrame(self, width=800, height=700)
+        self.frame_repetibilidad.pack(fill="both", expand=True, padx=5, pady=5)
+        self.frame_repetibilidad.pack_propagate(False)
+
+        self.frame_peso = ctk.CTkFrame(self.frame_repetibilidad, width=400, height=150)
+        self.frame_peso.pack(anchor="n", padx=10, pady=10, fill="x")
+        self.frame_peso.pack_propagate(False)
+
+        self.frame_peso_instantaneo = ctk.CTkFrame(
+            self.frame_peso, width=450, height=150
+        )
+        self.frame_peso_instantaneo.pack(side="left", padx=10, pady=10)
+        self.frame_peso_instantaneo.pack_propagate(False)
+
+        self.label_unidad = ctk.CTkLabel(
+            self.frame_peso_instantaneo, text="kg", font=("Cambria", 50)
+        )
+        self.label_unidad.pack(side="right", padx=20, pady=5)
+
+        self.frame_peso_al_momento = ctk.CTkFrame(
+            self.frame_peso_instantaneo, width=450, height=150
+        )
+        self.frame_peso_al_momento.pack(side="left", padx=10, pady=10)
+        self.frame_peso_al_momento.pack_propagate(False)
+
+        self.label_peso = ctk.CTkLabel(
+            self.frame_peso_al_momento, text="", font=("Cambria", 70)
+        )
+        self.label_peso.pack(padx=20, pady=5, expand=True)
+
+        self.label_tara = ctk.CTkLabel(
+            self.frame_peso_al_momento, text="", font=("Cambria", 12)
+        )
+        self.label_tara.place(x=8, y=8)
+
+        self.label_neto = ctk.CTkLabel(
+            self.frame_peso_al_momento, text="", font=("Cambria", 12)
+        )
+        self.label_neto.place(x=8, y=79)
+
+        # ---------BOTONES-------------------
+        imagen_tarar = Image.open(ruta(os.path.join("Icon", "aumentar.png")))
+        icon_tarar = ctk.CTkImage(
+            light_image=imagen_tarar, dark_image=imagen_tarar, size=(30, 30)
+        )
+
+        self.button_tarar = ctk.CTkButton(
+            self.frame_peso,
+            text="Tara",
+            width=2,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            command=self.shell.tara,
+            image=icon_tarar,
+            compound="top",
+        )
+        self.button_tarar.pack(side="left", expand=True)
+        # ---------------BOTON ZERO-------------
+        imagen_zero = Image.open(ruta(os.path.join("Icon", "cero.png")))
+        icon_zero = ctk.CTkImage(
+            light_image=imagen_zero, dark_image=imagen_zero, size=(30, 30)
+        )
+
+        self.button_zero = ctk.CTkButton(
+            self.frame_peso,
+            text="Zero",
+            width=2,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            command=self.shell.zero,
+            image=icon_zero,
+            compound="top",
+        )
+        self.button_zero.pack(side="left", expand=True)
+
+        # ---------------BOTON QUITAR TARAR-------------
+        imagen_q_tara = Image.open(ruta(os.path.join("Icon", "perdida-peso.png")))
+        icon_q_tara = ctk.CTkImage(
+            light_image=imagen_q_tara, dark_image=imagen_q_tara, size=(30, 30)
+        )
+        self.button_quitar_tara = ctk.CTkButton(
+            self.frame_peso,
+            text="Eliminar Tara",
+            width=2,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            command=self.shell.quitar_tara,
+            image=icon_q_tara,
+            compound="top",
+        )
+        self.button_quitar_tara.pack(side="left", expand=True)
+
+        # ----------------Condiciones Ambientales-----------------
+        self.frame_condiciones = ctk.CTkFrame(
+            self.frame_repetibilidad, width=400, height=150
+        )
+        self.frame_condiciones.pack(anchor="s", padx=10, pady=5, fill="x")
+        self.frame_condiciones.pack_propagate(False)
+
+        self.frame_condicion1 = ctk.CTkFrame(
+            self.frame_condiciones, width=220, height=150
+        )
+        self.frame_condicion1.pack(side="left", padx=10, pady=10, expand=True)
+        self.frame_condicion1.pack_propagate(False)
+
+        self.label_condiciones = ctk.CTkLabel(
+            self.frame_condicion1,
+            text="Presión",
+            font=("Cambria", 20),
+        )
+        self.label_condiciones.pack(anchor="n", padx=2, pady=5, expand=True)
+
+        self.frame_condicion2 = ctk.CTkFrame(
+            self.frame_condiciones, width=220, height=150
+        )
+        self.frame_condicion2.pack(side="left", padx=10, pady=10, expand=True)
+        self.frame_condicion2.pack_propagate(False)
+
+        self.label_condiciones2 = ctk.CTkLabel(
+            self.frame_condicion2,
+            text="Humedad",
+            font=("Cambria", 20),
+        )
+        self.label_condiciones2.pack(anchor="n", padx=2, pady=5, expand=True)
+
+        self.frame_condicion3 = ctk.CTkFrame(
+            self.frame_condiciones, width=220, height=150
+        )
+        self.frame_condicion3.pack(side="left", padx=10, pady=10, expand=True)
+        self.frame_condicion3.pack_propagate(False)
+
+        self.label_condiciones3 = ctk.CTkLabel(
+            self.frame_condicion3,
+            text="Temperatura",
+            font=("Cambria", 20),
+        )
+        self.label_condiciones3.pack(anchor="n", padx=2, pady=5, expand=True)
+        # ---------PRESION-----------------
+
+        self.frame_presion = ctk.CTkFrame(self.frame_condicion1, width=200, height=50)
+        self.frame_presion.pack(expand=True, anchor="n")
+        self.frame_presion.pack_propagate(False)
+
+        self.label_presion = ctk.CTkLabel(
+            self.frame_presion,
+            text="---",
+            font=("Cambria", 30),
+        )
+        self.label_presion.pack(expand=True)
+
+        self.combo_presion = ctk.CTkOptionMenu(
+            master=self.frame_condicion1,
+            values=self.lista_instrumentos,
+            width=120,
+            height=25,
+            font=("Cambria", 12),
+        )
+        self.combo_presion.pack(expand=True)
+        self.combo_presion.set("Modelos")
+
+        # -------------HIGROMETRO-----------------
+
+        self.frame_higrometro = ctk.CTkFrame(
+            self.frame_condicion2, width=200, height=50
+        )
+        self.frame_higrometro.pack(expand=True, anchor="n")
+        self.frame_higrometro.pack_propagate(False)
+
+        self.label_higrometro = ctk.CTkLabel(
+            self.frame_higrometro,
+            text="---",
+            font=("Cambria", 30),
+        )
+        self.label_higrometro.pack(expand=True)
+        self.combo_higrometro = ctk.CTkOptionMenu(
+            master=self.frame_condicion2,
+            values=self.lista_instrumentos,
+            width=120,
+            height=25,
+            font=("Cambria", 12),
+        )
+        self.combo_higrometro.pack(expand=True)
+        self.combo_higrometro.set("Modelos")
+
+        # --------------Temperatura-----------------
+
+        self.frame_temperatura = ctk.CTkFrame(
+            self.frame_condicion3, width=200, height=50
+        )
+        self.frame_temperatura.pack(expand=True, anchor="n")
+        self.frame_temperatura.pack_propagate(False)
+
+        self.label_temperatura = ctk.CTkLabel(
+            self.frame_temperatura, text="---", font=("Cambria", 30)
+        )
+        self.label_temperatura.pack(expand=True)
+        self.combo_temperatura = ctk.CTkOptionMenu(
+            master=self.frame_condicion3,
+            values=self.lista_instrumentos,
+            width=120,
+            height=25,
+            font=("Cambria", 12),
+        )
+        self.combo_temperatura.pack(expand=True)
+        self.combo_temperatura.set("Modelos")
+
+        # --------------------------------
+        self.frame_registro = ctk.CTkFrame(
+            self.frame_repetibilidad, width=400, height=420
+        )
+        self.frame_registro.pack(anchor="s", padx=10, pady=5, fill="x")
+        self.frame_registro.pack_propagate(False)
+        # ------tabla registros-----------------
+        columnas = ("#", "LTj", "Ij", "Ej", "I_prima_j", "I_Lsubj", "delta_Ij", "Lsubj")
+        
+        self.tabla = ttk.Treeview(
+            self.frame_registro,
+            columns=columnas,
+            show="headings",
+            height=10,
+        )
+        self.tabla.heading("#", text="#")
+        self.tabla.heading("LTj", text="L\u209c\u1d0a")          
+        self.tabla.heading("Ij", text="I\u1d0a")                
+        self.tabla.heading("Ej", text="E\u1d0a")                 
+        self.tabla.heading("I_prima_j", text="I'\u1d0a")        
+        self.tabla.heading("I_Lsubj", text="I(L\u209b\u1d6a\u209c\u1d0a)") 
+        self.tabla.heading("delta_Ij", text="\u0394I\u1d0a")    
+        self.tabla.heading("Lsubj", text="L\u209b\u1d6a\u209c\u1d0a")
+        
+        self.tabla.column("#", width=40, anchor="center")
+        self.tabla.column("LTj", width=80, anchor="center")
+        self.tabla.column("Ij", width=80, anchor="center")
+        self.tabla.column("Ej", width=80, anchor="center")
+        self.tabla.column("I_prima_j", width=80, anchor="center")
+        self.tabla.column("I_Lsubj", width=80, anchor="center") 
+        self.tabla.column("delta_Ij", width=80, anchor="center")
+        self.tabla.column("Lsubj", width=80, anchor="center")
+        self.tabla.pack(side="left", padx=10, pady=20, anchor="n")
+        # self.tabla = ttk.Treeview(
+        #     self.frame_registro,
+        #     columns=("#", "Ltj", "Ij", "I(L)"),
+        #     show="headings",
+        #     height=10,
+        # )
+
+        # self.tabla.heading("#", text="#")
+        # self.tabla.heading("Ltj", text="L\u209c\u209a")
+        # self.tabla.heading("Ij", text="I\u1d0a")
+        # self.tabla.heading("I(L)", text="I(L)")
+
+        # self.tabla.column("#", width=40, anchor="center")
+        # self.tabla.column("Ltj", width=120, anchor="center")
+        # self.tabla.column("Ij", width=120, anchor="center")
+        # self.tabla.column("I(L)", width=120, anchor="center")
+        # self.tabla.pack(side="left", padx=10, pady=20, anchor="n")
+
+        # -------BOTONES INDICACIONES-----------------
+
+        self.frame_botones_EI = ctk.CTkFrame(self.frame_registro, width=390, height=130)
+        self.frame_botones_EI.pack(side="left", padx=10, pady=20, anchor="n")
+        self.frame_botones_EI.pack_propagate(False)
+
+        self.entry_secciones = ctk.CTkEntry(
+            self.frame_botones_EI,
+            placeholder_text="Celdas",
+            width=100,
+            justify="center",
+            border_color="white",
+        )
+        self.entry_secciones.grid(row=0, column=0, padx=5, pady=10)
+
+        imagen_generar = Image.open(ruta(os.path.join("Icon", "idea.png")))
+        icon_generar = ctk.CTkImage(
+            light_image=imagen_generar, dark_image=imagen_generar, size=(30, 30)
+        )
+
+        self.btn_generar = ctk.CTkButton(
+            self.frame_botones_EI,
+            text="Generar",
+            command=self.puntos,
+            width=150,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            image=icon_generar,
+        )
+        self.btn_generar.grid(row=1, column=0, padx=5, pady=10)
+
+        self.btn_registro = ctk.CTkButton(
+            self.frame_botones_EI,
+            text="Registrar peso",
+            command=self.registrar_peso_estable,
+        )
+        self.btn_registro.grid(row=2, column=0, padx=5, pady=10)
+        
+        # --------BOTONES DE PESAS SUSTITUCION O NADA----
+
+        imagen_pesas = Image.open(ruta(os.path.join("Icon", "escoger.png")))
+        icon_pesas = ctk.CTkImage(
+            light_image=imagen_pesas, dark_image=imagen_pesas, size=(30, 30)
+        )
+
+        self.btn_pesas = ctk.CTkButton(
+            self.frame_botones_EI,
+            text="Pesas",
+            width=150,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            command=self.mostrar_selector_pesas,
+            image=icon_pesas,
+        )
+        self.btn_pesas.grid(row=0, column=1, padx=5, pady=10)
+
+        self.btn_sustitucion = ctk.CTkButton(
+            self.frame_botones_EI,
+            text="Sustitución",
+            command=self.mostrar_selector_sustitucion,
+            width=150,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            image=icon_pesas,
+        )
+        self.btn_sustitucion.grid(row=1, column=1, padx=5, pady=10)
+        
+        
+        # ----------Tabla de pesos -----------
+
+        self.tabla_sel = ttk.Treeview(
+            self.frame_registro,
+            columns=("#", "ID", "serie", "valor", "unidad"),
+            show="headings",
+            height=8,
+        )
+        self.tabla_sel.heading("#", text="#")
+        self.tabla_sel.heading("ID", text="Identificación")
+        self.tabla_sel.heading("serie", text="Serie")
+        self.tabla_sel.heading("valor", text="V nominal")
+        self.tabla_sel.heading("unidad", text="Unidad")
+
+        self.tabla_sel.column("#", width=30, anchor="center")
+        self.tabla_sel.column("ID", width=90, anchor="center")
+        self.tabla_sel.column("serie", width=90, anchor="center")
+        self.tabla_sel.column("valor", width=90, anchor="center")
+        self.tabla_sel.column("unidad", width=70, anchor="center")
+        self.tabla_sel.pack(side="left", padx=5, pady=20, anchor="n")
+
+        self.label_suma_nominal = ctk.CTkLabel(
+            self.frame_registro, text="Suma Nominal: 0 kg", font=("Cambria", 12)
+        )
+        self.label_suma_nominal.place(x=990, y=250)
+
+    def menu(self):
+        self.menu = CTkMenuBar(master=self)
+        self.b1 = self.menu.add_cascade("Archivo", command=self.abrir_modelos)
+        self.b2_puerto_bar = self.menu.add_cascade("Barometro")
+        self.dropdown_puerto_bar = CustomDropdownMenu(widget=self.b2_puerto_bar)
+        self.b3_puerto_higro = self.menu.add_cascade("Higrometro")
+        self.dropdown_puerto_higro = CustomDropdownMenu(widget=self.b3_puerto_higro)
+
+        # self.b4 = self.menu.add_cascade(
+        #     "Leer xlsx", command=self.master.cargar_excel_calibracion
+        # )
+        # self.b5 = self.menu.add_cascade(
+        #     "Cargar Prueba", command=self.cargar_datos_desde_excel
+        # )
+        # self.b6 = self.menu.add_cascade("Nueva Prueba", command=self.nueva_prueba)
+
+        puertos = serial.tools.list_ports.comports()
+        if not puertos:
+            self.dropdown_puerto_bar.add_command(label="No se encontraron puertos")
+            self.dropdown_puerto_higro.add_command(label="No se encontraron puertos")
+        else:
+            for i in puertos:
+                self.dropdown_puerto_bar.add_option(
+                    option=i.device,
+                    command=lambda puerto=i.device: self.seleccionar_puerto_bar(puerto),
+                    icon=ruta(os.path.join("Icon", "vga_cable.png")),
+                )
+                self.dropdown_puerto_higro.add_option(
+                    option=i.device,
+                    command=lambda puerto=i.device: self.seleccionar_puerto_higro(
+                        puerto
+                    ),
+                    icon=ruta(os.path.join("Icon", "vga_cable.png")),
+                )
+
+    def actualizar_peso(self):
+        global Lectura_barometro, LecturaT1, LecturaT2
+        try:
+            val_menos = "{:.2f}".format(float(Lectura_barometro))
+            self.label_presion.configure(text=f"{val_menos} Pa")
+            self.label_temperatura.configure(text=f"{LecturaT1} °C")
+            self.label_higrometro.configure(text=f"{LecturaH1} %")
+        except Exception as e:
+            print(f"error -{e}")
+
+        lecture = self.shell.peso_instantaneo()
+
+        if len(lecture) >= 3:
+            try:
+                peso_r = int(float(lecture[2]))
+                self.label_peso.configure(text=str(peso_r))
+                self.label_neto.configure(text=f"Neto: {peso_r} kg", text_color="white")
+            except ValueError:
+                pass
+
+        if len(lecture) >= 3:
+            wg = lecture[2]
+            self.label_peso.configure(text=wg)
+
+            if lecture[1] == "S":
+                self.label_peso.configure(text_color="#158A30")
+            else:
+                self.label_peso.configure(text_color="#B52C19")
+
+            valor_tara = self.shell.obtener_tara()
+            self.label_tara.configure(text=f"Tara: {valor_tara}", text_color="#FF6021")
+
+        self.after(500, self.actualizar_peso)
+
+    def abrir_modelos(self):
+        ruta = askopenfilename(
+            title="Seleccionar archivo", filetypes=[("Archivos de Excel", "*.xlsx")]
+        )
+
+        if ruta:
+            try:
+                wb = openpyxl.load_workbook(ruta, data_only=True)
+
+                if "Equipo CA" in wb.sheetnames:
+                    hoja = wb["Equipo CA"]
+                    self.equipos_ca = {}
+                else:
+                    CTkMessagebox(
+                        title="Error",
+                        message='La hoja "Equipo CA" no se encuentra en el archivo',
+                        icon="error",
+                    )
+                    return
+
+                lista_sensores = []
+                for fila in hoja.iter_rows(min_row=2, max_col=10, values_only=True):
+                    if fila[0] is not None:
+                        a = str(fila[0]).strip()
+                        b = str(fila[1]).strip() if fila[1] is not None else ""
+                        c = str(fila[2]).strip() if fila[2] is not None else ""
+                        d = str(fila[3]).strip() if fila[3] is not None else ""
+                        e = str(fila[5]).strip() if fila[5] is not None else ""
+                        h = str(fila[7]).strip() if fila[7] is not None else ""
+                        sensor_info = f"{d}, {e}, {h}".strip(", ")
+
+                        self.equipos_ca[sensor_info] = {
+                            "key": a,
+                            "magnitud": b,
+                            "indicacion": c,
+                            "marca": d,
+                            "modelo": e,
+                            "serie_sensor": h,
+                        }
+
+                        if sensor_info not in lista_sensores:
+                            lista_sensores.append(sensor_info)
+                self.lista_medidores = lista_sensores
+                self.combo_presion.configure(values=lista_sensores)
+                self.combo_higrometro.configure(values=lista_sensores)
+                self.combo_temperatura.configure(values=lista_sensores)
+
+                if "Equipo Pesas" in wb.sheetnames:
+                    hoja_pesas = wb["Equipo Pesas"]
+                    self.pesas = {}  # Diccionario maestro local
+                    self.lista_pesas_completa = []
+
+                    for idx, i in enumerate(
+                        hoja_pesas.iter_rows(min_row=2, max_col=12, values_only=True)
+                    ):
+                        if i[2] is not None:
+                            a = str(i[0]).strip()
+                            b = str(i[1]).strip() if i[1] is not None else ""
+                            c = str(i[2]).strip() if i[2] is not None else ""
+                            e = str(i[4]).strip() if i[4] is not None else ""
+                            f = str(i[5]).strip() if i[5] is not None else ""
+                            g = str(i[6]).strip() if i[6] is not None else ""
+                            h = str(i[7]).strip() if i[7] is not None else ""
+                            j = str(i[9]).strip() if i[9] is not None else ""
+                            k = str(i[10]).strip() if i[10] is not None else ""
+
+                            # --- CORRECCIÓN DE LIMPIEZA TOTAL (Elimina espacios ocultos como "no " o "si ") ---
+                            sust = (
+                                str(i[11]).strip().lower()
+                                if i[11] is not None
+                                else "no"
+                            )
+
+                            pesa_key = f"{c} | {f} | {j}{k}"
+                            self.pesas[pesa_key] = {
+                                "key": a,
+                                "magnitud": b,
+                                "id": c,
+                                "modelo": e,
+                                "serie": f,
+                                "juego": g,
+                                "id_pesa": h,
+                                "nominal": j,
+                                "unidad": k,
+                                "sustitucion": sust,
+                            }
+                            self.lista_pesas_completa.append(pesa_key)
+
+                CTkMessagebox(
+                    title="Exito",
+                    message="Modelos cargados correctamente.",
+                    icon="check",
+                )
+
+            except Exception as e:
+                CTkMessagebox(
+                    title="Error",
+                    message=f"Error al abrir el archivo: {e}",
+                    icon="cancel",
+                )
+                return
+
+    def seleccionar_puerto_higro(self, puerto):
+        if conectar_higrometro(puerto):
+            self.hilo_higro = threading.Thread(target=read_hidro, daemon=True)
+            self.hilo_higro.start()
+            CTkMessagebox(
+                title="Higrometro", message=f"conexion con {puerto}", icon="check"
+            )
+        else:
+            print("mal higro")
+
+    def seleccionar_puerto_bar(self, puerto):
+
+        if conectar_barometro(puerto):
+            self.hilo_bar = threading.Thread(target=read_bar, daemon=True)
+            self.hilo_bar.start()
+            CTkMessagebox(
+                title="Barometro",
+                message=f"Barometro conectado a {puerto}",
+                icon="check",
+            )
+        else:
+            CTkMessagebox(title="Barometro", message="Sin conexion", icon="cancel")
+
+    def puntos(self):
+        try:
+            puntos = int(self.entry_secciones.get())
+            if puntos < 1:
+                CTkMessagebox(
+                    title="Error",
+                    message="Se necesitan un punto ",
+                    icon="cancel",
+                )
+                return
+            
+            for i in self.tabla.get_children():
+                self.tabla.delete(i)
+                
+            self.tabla.insert("", "end", values=("0","0","0","0","0","0","0","0"))
+            
+            for i in range(1,puntos+1):
+                self.tabla.insert("", "end", values=(str(i),"---","---","---","---","---","---","---"))
+                
+            self.hora_inicial = datetime.now().strftime("%H:%M:%S")
+        
+        except ValueError:
+            CTkMessagebox(
+                title="Error",
+                message="Ingrese un número válido de puntos.",
+                icon="cancel",
+            )
+
+    # def registrar_peso_estable(self):
+    #     lectura = self.shell.peso_estable()
+    #     if len(lectura) < 3:
+    #         CTkMessagebox(
+    #             title="Error", message="Peso inestable", icon="cancel"
+    #         )
+    #         return
+        
+    #     peso = lectura[2]
+        
+    #     for i in self.tabla.get_children():
+    #         v = self.tabla.item(i)["values"]
+    #         if str(v[0])=="0":continue
+                
+
+        
+
+        CTkMessagebox(
+            title="Aviso",
+            message="Todas las fases de la prueba por sustitución están completas.",
+            icon="info",
+        )
+
+    def registrar_peso_estable(self):
+        """Avanza de forma horizontal aplicando las ecuaciones exactas de la guía de sustitución"""
+        lectura = self.shell.peso_estable()
+        if len(lectura) < 3:
+            CTkMessagebox(title="Error", message="Peso inestable en la plataforma.", icon="cancel")
+            return
+            
+        peso_bascula = float(lectura[2])
+        filas = self.tabla.get_children()
+
+        for idx, item in enumerate(filas):
+            v = self.tabla.item(item)["values"]
+            if str(v[0]) == "0": continue # Omitir renglón cero inicial
+
+            # Obtener los datos del Step Anterior (j-1) para el acumulado de sustitución
+            item_anterior = filas[idx - 1]
+            v_anterior = self.tabla.item(item_anterior)["values"]
+            l_sub_anterior = float(v_anterior[7]) # Lsubj del renglón anterior
+
+            # Valor nominal de las pesas patrón actuales puestas en este paso específico (desde tu panel de la derecha)
+            try:
+                l_tj_actual = float(self.label_suma_nominal.cget("text").replace("Total: ", "").replace(" kg", "").strip())
+            except Exception:
+                l_tj_actual = 0.0
+
+            # 1. LECTURA 1 -> I_j (Carga con Patrón)
+            # Fórmulas: L_j = L_sub,j-1 + L_Tj  |  E_j = I_j - L_j
+            if str(v[2]).strip() == "---":
+                l_j_total = l_sub_anterior + l_tj_actual
+                e_j = peso_bascula - l_j_total
+                
+                # Actualizar fila: #, LTj, Ij, Ej, I_prima_j, I_Lsubj, delta_Ij, Lsubj
+                self.tabla.item(item, values=(v[0], f"{l_j_total:.2f}", f"{peso_bascula:.2f}", f"{e_j:.2f}", v[4], v[5], v[6], v[7]))
+                self.tabla.selection_set(item)
+                return
+
+            # 2. LECTURA 2 -> I'_j (Descarga tras retirar el patrón de la plataforma)
+            if str(v[4]).strip() == "---":
+                self.tabla.item(item, values=(v[0], v[1], v[2], v[3], f"{peso_bascula:.2f}", v[5], v[6], v[7]))
+                self.tabla.selection_set(item)
+                return
+
+            # 3. LECTURA 3 -> I(L_subj) (Nueva Carga de Sustitución añadida)
+            # Fórmulas: ΔI_j = I(L_subj) - I'_j  |  L_subj = L_sub,j-1 + L_Tj + ΔI_j
+            if str(v[5]).strip() == "---":
+                l_j_fijado = float(v[1]) # Recuperamos el L_j calculado en la fase 1
+                i_prima_j = float(v[4])
+                
+                delta_i_j = peso_bascula - i_prima_j
+                l_subj_total = l_sub_anterior + l_tj_actual + delta_i_j
+                
+                self.tabla.item(item, values=(v[0], f"{l_j_fijado:.2f}", v[2], v[3], f"{i_prima_j:.2f}", f"{peso_bascula:.2f}", f"{delta_i_j:.2f}", f"{l_subj_total:.2f}"))
+                
+                # Mover el foco automáticamente al siguiente renglón (Step j+1)
+                if idx + 1 < len(filas):
+                    self.tabla.selection_set(filas[idx + 1])
+                    self.tabla.see(filas[idx + 1])
+                return
+                
+        CTkMessagebox(title="Aviso", message="Todas las fases de la prueba por sustitución están completas.", icon="info")
+
+    def mostrar_selector_pesas(self):
+        """Filtra el diccionario de pesas y muestra en la ventana emergente solo los patrones (sustitucion == 'no')"""
+        diccionario_pesas = getattr(self, "pesas", {})
+
+        # Filtramos asegurando limpieza de strings
+        lista_patrones = [
+            llave
+            for llave, datos in diccionario_pesas.items()
+            if str(datos.get("sustitucion")).strip().lower() == "no"
+        ]
+
+        if lista_patrones:
+            Ventana_Pesas(self, lista_patrones, self.actualizar_tabla_pesas)
+        else:
+            CTkMessagebox(
+                title="Sin registros",
+                message="No se encontraron elementos marcados como patrones ('no') en la columna L del archivo cargado.",
+                icon="warning",
+            )
+
+    def actualizar_tabla_pesas(self, seleccionadas):
+        """Recibe las pesas seleccionadas y las acumula con las ya existentes sin borrar"""
+        if not hasattr(self, "llaves_actuales") or self.llaves_actuales is None:
+            self.llaves_actuales = []
+
+        for llave in seleccionadas:
+            if llave not in self.llaves_actuales:
+                self.llaves_actuales.append(llave)
+
+        for item in self.tabla_sel.get_children():
+            self.tabla_sel.delete(item)
+
+        suma_total = 0.0
+        diccionario_pesas = getattr(self, "pesas", {})
+
+        for i, llave in enumerate(self.llaves_actuales, start=1):
+            datos = diccionario_pesas.get(llave)
+            if datos:
+                self.tabla_sel.insert(
+                    "",
+                    "end",
+                    values=(
+                        i,
+                        datos["id"],
+                        datos["serie"],
+                        datos["nominal"],
+                        datos["unidad"],
+                    ),
+                )
+
+                try:
+                    val = float(datos["nominal"])
+                    unidad = str(datos["unidad"]).lower().strip()
+                    if unidad in ["g", "gramos", "g."]:
+                        suma_total += val / 1000.0
+                    else:
+                        suma_total += val
+                except ValueError:
+                    pass
+
+        self.label_suma_nominal.configure(text=f"Total: {suma_total:.2f} kg")
+        
+    def mostrar_selector_sustitucion(self):
+        """Filtra el diccionario de pesas y muestra en la ventana emergente solo las de sustitución"""
+        diccionario_pesas = getattr(self, "pesas", {})
+
+        lista_sustitucion = [
+            llave
+            for llave, datos in diccionario_pesas.items()
+            if datos.get("sustitucion") == "si"
+        ]
+
+        if lista_sustitucion:
+            Ventana_Pesas(self, lista_sustitucion, self.actualizar_tabla_pesas)
+        else:
+            CTkMessagebox(
+                title="Sin registros",
+                message="No se encontraron elementos marcados como sustitución ('si') en la columna L del archivo cargado.",
+                icon="warning",
+            )
 class Window(ctk.CTk):
     """
     clase principal de la ventana, aqui se crean los widgepesots, los menus y se actualiza el peso al momento
@@ -2017,6 +4579,9 @@ class Window(ctk.CTk):
         self.b4 = self.menu.add_cascade(
             "Repetibilidad", command=self.ventana_repetibilidad
         )
+        self.b5 = self.menu.add_cascade(
+            "Error de Indicación", command=self.Error_Indicacion
+        )
 
         # -------------Las opciones solo del menu archivo---------------
         self.dropdown_1 = CustomDropdownMenu(widget=self.b1)
@@ -2276,33 +4841,6 @@ class Window(ctk.CTk):
             self.label_tara.configure(text=f"Tara: {valor_tara}", text_color="#FF6021")
         self.after(100, self.peso_al_momento)
 
-    def apli_cal_cero(self):
-        res = self.shell.cali_cero()
-        if res == "Z A":
-            CTkMessagebox(title="Calibracion", message="Cero estable", icon="check")
-
-        elif res == "Z I":
-            CTkMessagebox(title="Calibracion", message="Inestable", icon="cancel")
-        else:
-            CTkMessagebox(
-                title="Calibracion", message=f"No calibro {res}", icon="warning"
-            )
-
-    def Excentricidad(self):
-        # Obtenemos la lista de instrumentos que ya cargamos previamente[cite: 1]
-        equipos = getattr(self, "lista_medidores", ["Modelos no cargados"])
-
-        if (
-            not hasattr(self, "calibracion_window")
-            or not self.calibracion_window.winfo_exists()
-        ):
-            # Pasamos self.shell y la lista de instrumentos[cite: 1]
-            self.calibracion_window = Excentricidad(
-                self, shell=self.shell, lista_instrumentos=equipos
-            )
-        else:
-            self.calibracion_window.focus()
-
     def ventana_repetibilidad(self):
         # CAMBIO: Usamos "lista_medidores" que es como lo guardas en abrir_modelos
         equipos = getattr(self, "lista_medidores", ["--"])
@@ -2312,3 +4850,59 @@ class Window(ctk.CTk):
             self.v_repet = Repetibilidad(self, self.shell, lista_instrumentos=equipos)
         else:
             self.v_repet.focus()
+
+    def cargar_excel_calibracion(self):
+        archivo = askopenfilename(
+            title="Seleccionar Excel de Calibración",
+            filetypes=[("Archivos de Excel", "*.xlsx")],
+        )
+        if archivo:
+            self.archivo_calibracion_actual = archivo
+            CTkMessagebox(
+                title="Archivo Cargado",
+                message=f"Archivo cargado con éxito:\n{os.path.basename(archivo)}",
+                icon="check",
+            )
+
+            # --- AGREGA ESTA COMPROBACIÓN AUTOMÁTICA ---
+            # Si la ventana de excentricidad existe y está abierta, mandamos llamar su lector inmediatamente
+            if (
+                hasattr(self, "calibracion_window")
+                and self.calibracion_window.winfo_exists()
+            ):
+                self.calibracion_window.cargar_datos_desde_excel()
+
+    def Excentricidad(self):
+        equipos = getattr(self, "lista_medidores", ["--"])
+
+        # Obtenemos la ruta del archivo cargado en el menú
+        ruta_excel = getattr(self, "archivo_calibracion_actual", None)
+
+        if not hasattr(self, "v_excen") or not self.v_excen.winfo_exists():
+            # PASAMOS ruta_excel_trabajo como parámetro a la clase
+            self.v_excen = Excentricidad(
+                self,
+                self.shell,
+                lista_instrumentos=equipos,
+                ruta_excel_trabajo=ruta_excel,
+            )
+        else:
+            self.v_excen.focus()
+
+    def Error_Indicacion(self):
+        equipos = getattr(self, "lista_medidores", ["--"])
+
+        # Obtenemos la ruta del archivo cargado en el menú
+        ruta_excel = getattr(self, "archivo_calibracion_actual", None)
+
+        if not hasattr(self, "ventana_error") or not self.ventana_error.winfo_exists():
+            # PASAMOS ruta_excel_trabajo como parámetro a la clase
+            self.ventana_error = Error_Indicacion(
+                parent=self,
+                master=self,
+                shell=self.shell,
+                lista_instrumentos=equipos,
+                ruta_excel=ruta_excel,
+            )
+        else:
+            self.ventana_error.focus()
