@@ -1,0 +1,364 @@
+def widgets(self):
+
+        self.frame_repetibilidad = ctk.CTkFrame(self, width=800, height=700)
+        self.frame_repetibilidad.pack(fill="both", expand=True, padx=5, pady=5)
+        self.frame_repetibilidad.pack_propagate(False)
+
+        self.frame_peso = ctk.CTkFrame(self.frame_repetibilidad, width=400, height=150)
+        self.frame_peso.pack(anchor="n", padx=10, pady=10, fill="x")
+        self.frame_peso.pack_propagate(False)
+
+        self.frame_peso_instantaneo = ctk.CTkFrame(
+            self.frame_peso, width=450, height=150
+        )
+        self.frame_peso_instantaneo.pack(side="left", padx=10, pady=10)
+        self.frame_peso_instantaneo.pack_propagate(False)
+
+        self.label_unidad = ctk.CTkLabel(
+            self.frame_peso_instantaneo, text="kg", font=("Cambria", 50)
+        )
+        self.label_unidad.pack(side="right", padx=20, pady=5)
+
+        self.frame_peso_al_momento = ctk.CTkFrame(
+            self.frame_peso_instantaneo, width=450, height=150
+        )
+        self.frame_peso_al_momento.pack(side="left", padx=10, pady=10)
+        self.frame_peso_al_momento.pack_propagate(False)
+
+        self.label_peso = ctk.CTkLabel(
+            self.frame_peso_al_momento, text="", font=("Cambria", 70)
+        )
+        self.label_peso.pack(padx=20, pady=5, expand=True)
+
+        self.label_tara = ctk.CTkLabel(
+            self.frame_peso_al_momento, text="", font=("Cambria", 12)
+        )
+        self.label_tara.place(x=8, y=8)
+
+        self.label_neto = ctk.CTkLabel(
+            self.frame_peso_al_momento, text="", font=("Cambria", 12)
+        )
+        self.label_neto.place(x=8, y=79)
+
+        # ---------BOTONES-------------------
+        imagen_tarar = Image.open(ruta(os.path.join("Icon", "aumentar.png")))
+        icon_tarar = ctk.CTkImage(
+            light_image=imagen_tarar, dark_image=imagen_tarar, size=(30, 30)
+        )
+
+        self.button_tarar = ctk.CTkButton(
+            self.frame_peso,
+            text="Tara",
+            width=2,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            command=self.shell.tara,
+            image=icon_tarar,
+            compound="top",
+        )
+        self.button_tarar.pack(side="left", expand=True)
+        # ---------------BOTON ZERO-------------
+        imagen_zero = Image.open(ruta(os.path.join("Icon", "cero.png")))
+        icon_zero = ctk.CTkImage(
+            light_image=imagen_zero, dark_image=imagen_zero, size=(30, 30)
+        )
+
+        self.button_zero = ctk.CTkButton(
+            self.frame_peso,
+            text="Zero",
+            width=2,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            command=self.shell.zero,
+            image=icon_zero,
+            compound="top",
+        )
+        self.button_zero.pack(side="left", expand=True)
+
+        # ---------------BOTON QUITAR TARAR-------------
+        imagen_q_tara = Image.open(ruta(os.path.join("Icon", "perdida-peso.png")))
+        icon_q_tara = ctk.CTkImage(
+            light_image=imagen_q_tara, dark_image=imagen_q_tara, size=(30, 30)
+        )
+        self.button_quitar_tara = ctk.CTkButton(
+            self.frame_peso,
+            text="Eliminar Tara",
+            width=2,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            command=self.shell.quitar_tara,
+            image=icon_q_tara,
+            compound="top",
+        )
+        self.button_quitar_tara.pack(side="left", expand=True)
+
+        # ----------------Condiciones Ambientales-----------------
+        self.frame_condiciones = ctk.CTkFrame(
+            self.frame_repetibilidad, width=400, height=150
+        )
+        self.frame_condiciones.pack(anchor="s", padx=10, pady=5, fill="x")
+        self.frame_condiciones.pack_propagate(False)
+
+        self.frame_condicion1 = ctk.CTkFrame(
+            self.frame_condiciones, width=220, height=150
+        )
+        self.frame_condicion1.pack(side="left", padx=10, pady=10, expand=True)
+        self.frame_condicion1.pack_propagate(False)
+
+        self.label_condiciones = ctk.CTkLabel(
+            self.frame_condicion1,
+            text="Presión",
+            font=("Cambria", 20),
+        )
+        self.label_condiciones.pack(anchor="n", padx=2, pady=5, expand=True)
+
+        self.frame_condicion2 = ctk.CTkFrame(
+            self.frame_condiciones, width=220, height=150
+        )
+        self.frame_condicion2.pack(side="left", padx=10, pady=10, expand=True)
+        self.frame_condicion2.pack_propagate(False)
+
+        self.label_condiciones2 = ctk.CTkLabel(
+            self.frame_condicion2,
+            text="Humedad",
+            font=("Cambria", 20),
+        )
+        self.label_condiciones2.pack(anchor="n", padx=2, pady=5, expand=True)
+
+        self.frame_condicion3 = ctk.CTkFrame(
+            self.frame_condiciones, width=220, height=150
+        )
+        self.frame_condicion3.pack(side="left", padx=10, pady=10, expand=True)
+        self.frame_condicion3.pack_propagate(False)
+
+        self.label_condiciones3 = ctk.CTkLabel(
+            self.frame_condicion3,
+            text="Temperatura",
+            font=("Cambria", 20),
+        )
+        self.label_condiciones3.pack(anchor="n", padx=2, pady=5, expand=True)
+        # ---------PRESION-----------------
+
+        self.frame_presion = ctk.CTkFrame(self.frame_condicion1, width=200, height=50)
+        self.frame_presion.pack(expand=True, anchor="n")
+        self.frame_presion.pack_propagate(False)
+
+        self.label_presion = ctk.CTkLabel(
+            self.frame_presion,
+            text="---",
+            font=("Cambria", 30),
+        )
+        self.label_presion.pack(expand=True)
+
+        self.combo_presion = ctk.CTkOptionMenu(
+            master=self.frame_condicion1,
+            values=self.lista_instrumentos,
+            width=120,
+            height=25,
+            font=("Cambria", 12),
+        )
+        self.combo_presion.pack(expand=True)
+        self.combo_presion.set("Modelos")
+
+        # -------------HIGROMETRO-----------------
+
+        self.frame_higrometro = ctk.CTkFrame(
+            self.frame_condicion2, width=200, height=50
+        )
+        self.frame_higrometro.pack(expand=True, anchor="n")
+        self.frame_higrometro.pack_propagate(False)
+
+        self.label_higrometro = ctk.CTkLabel(
+            self.frame_higrometro,
+            text="---",
+            font=("Cambria", 30),
+        )
+        self.label_higrometro.pack(expand=True)
+        self.combo_higrometro = ctk.CTkOptionMenu(
+            master=self.frame_condicion2,
+            values=self.lista_instrumentos,
+            width=120,
+            height=25,
+            font=("Cambria", 12),
+        )
+        self.combo_higrometro.pack(expand=True)
+        self.combo_higrometro.set("Modelos")
+
+        # --------------Temperatura-----------------
+
+        self.frame_temperatura = ctk.CTkFrame(
+            self.frame_condicion3, width=200, height=50
+        )
+        self.frame_temperatura.pack(expand=True, anchor="n")
+        self.frame_temperatura.pack_propagate(False)
+
+        self.label_temperatura = ctk.CTkLabel(
+            self.frame_temperatura, text="---", font=("Cambria", 30)
+        )
+        self.label_temperatura.pack(expand=True)
+        self.combo_temperatura = ctk.CTkOptionMenu(
+            master=self.frame_condicion3,
+            values=self.lista_instrumentos,
+            width=120,
+            height=25,
+            font=("Cambria", 12),
+        )
+        self.combo_temperatura.pack(expand=True)
+        self.combo_temperatura.set("Modelos")
+
+        # --------------------------------
+        self.frame_registro = ctk.CTkFrame(
+            self.frame_repetibilidad, width=400, height=420
+        )
+        self.frame_registro.pack(anchor="s", padx=10, pady=5, fill="x")
+        self.frame_registro.pack_propagate(False)
+        # ------tabla registros-----------------
+        columnas = ("#", "LTj", "Ij", "Ej", "I_prima_j", "I_Lsubj", "delta_Ij", "Lsubj")
+        
+        self.tabla = ttk.Treeview(
+            self.frame_registro,
+            columns=columnas,
+            show="headings",
+            height=10,
+        )
+        self.tabla.heading("#", text="#")
+        self.tabla.heading("LTj", text="L\u209c\u1d0a")          
+        self.tabla.heading("Ij", text="I\u1d0a")                
+        self.tabla.heading("Ej", text="E\u1d0a")                 
+        self.tabla.heading("I_prima_j", text="I'\u1d0a")        
+        self.tabla.heading("I_Lsubj", text="I(L\u209b\u1d6a\u209c\u1d0a)") 
+        self.tabla.heading("delta_Ij", text="\u0394I\u1d0a")    
+        self.tabla.heading("Lsubj", text="L\u209b\u1d6a\u209c\u1d0a")
+        
+        self.tabla.column("#", width=40, anchor="center")
+        self.tabla.column("LTj", width=80, anchor="center")
+        self.tabla.column("Ij", width=80, anchor="center")
+        self.tabla.column("Ej", width=80, anchor="center")
+        self.tabla.column("I_prima_j", width=80, anchor="center")
+        self.tabla.column("I_Lsubj", width=80, anchor="center") 
+        self.tabla.column("delta_Ij", width=80, anchor="center")
+        self.tabla.column("Lsubj", width=80, anchor="center")
+        self.tabla.pack(side="left", padx=10, pady=20, anchor="n")
+        # self.tabla = ttk.Treeview(
+        #     self.frame_registro,
+        #     columns=("#", "Ltj", "Ij", "I(L)"),
+        #     show="headings",
+        #     height=10,
+        # )
+
+        # self.tabla.heading("#", text="#")
+        # self.tabla.heading("Ltj", text="L\u209c\u209a")
+        # self.tabla.heading("Ij", text="I\u1d0a")
+        # self.tabla.heading("I(L)", text="I(L)")
+
+        # self.tabla.column("#", width=40, anchor="center")
+        # self.tabla.column("Ltj", width=120, anchor="center")
+        # self.tabla.column("Ij", width=120, anchor="center")
+        # self.tabla.column("I(L)", width=120, anchor="center")
+        # self.tabla.pack(side="left", padx=10, pady=20, anchor="n")
+
+        # -------BOTONES INDICACIONES-----------------
+
+        self.frame_botones_EI = ctk.CTkFrame(self.frame_registro, width=390, height=130)
+        self.frame_botones_EI.pack(side="left", padx=10, pady=20, anchor="n")
+        self.frame_botones_EI.pack_propagate(False)
+
+        self.entry_secciones = ctk.CTkEntry(
+            self.frame_botones_EI,
+            placeholder_text="Celdas",
+            width=100,
+            justify="center",
+            border_color="white",
+        )
+        self.entry_secciones.grid(row=0, column=0, padx=5, pady=10)
+
+        imagen_generar = Image.open(ruta(os.path.join("Icon", "idea.png")))
+        icon_generar = ctk.CTkImage(
+            light_image=imagen_generar, dark_image=imagen_generar, size=(30, 30)
+        )
+
+        self.btn_generar = ctk.CTkButton(
+            self.frame_botones_EI,
+            text="Generar",
+            command=self.puntos,
+            width=150,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            image=icon_generar,
+        )
+        self.btn_generar.grid(row=1, column=0, padx=5, pady=10)
+
+        self.btn_registro = ctk.CTkButton(
+            self.frame_botones_EI,
+            text="Registrar peso",
+            command=self.registrar_peso_estable,
+        )
+        self.btn_registro.grid(row=2, column=0, padx=5, pady=10)
+        
+        # --------BOTONES DE PESAS SUSTITUCION O NADA----
+
+        imagen_pesas = Image.open(ruta(os.path.join("Icon", "escoger.png")))
+        icon_pesas = ctk.CTkImage(
+            light_image=imagen_pesas, dark_image=imagen_pesas, size=(30, 30)
+        )
+
+        self.btn_pesas = ctk.CTkButton(
+            self.frame_botones_EI,
+            text="Pesas",
+            width=150,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            command=self.mostrar_selector_pesas,
+            image=icon_pesas,
+        )
+        self.btn_pesas.grid(row=0, column=1, padx=5, pady=10)
+
+        self.btn_sustitucion = ctk.CTkButton(
+            self.frame_botones_EI,
+            text="Sustitución",
+            command=self.mostrar_selector_sustitucion,
+            width=150,
+            height=10,
+            corner_radius=40,
+            border_color="white",
+            border_width=1,
+            image=icon_pesas,
+        )
+        self.btn_sustitucion.grid(row=1, column=1, padx=5, pady=10)
+        
+        
+        # ----------Tabla de pesos -----------
+
+        self.tabla_sel = ttk.Treeview(
+            self.frame_registro,
+            columns=("#", "ID", "serie", "valor", "unidad"),
+            show="headings",
+            height=8,
+        )
+        self.tabla_sel.heading("#", text="#")
+        self.tabla_sel.heading("ID", text="Identificación")
+        self.tabla_sel.heading("serie", text="Serie")
+        self.tabla_sel.heading("valor", text="V nominal")
+        self.tabla_sel.heading("unidad", text="Unidad")
+
+        self.tabla_sel.column("#", width=30, anchor="center")
+        self.tabla_sel.column("ID", width=90, anchor="center")
+        self.tabla_sel.column("serie", width=90, anchor="center")
+        self.tabla_sel.column("valor", width=90, anchor="center")
+        self.tabla_sel.column("unidad", width=70, anchor="center")
+        self.tabla_sel.pack(side="left", padx=5, pady=20, anchor="n")
+
+        self.label_suma_nominal = ctk.CTkLabel(
+            self.frame_registro, text="Suma Nominal: 0 kg", font=("Cambria", 12)
+        )
+        self.label_suma_nominal.place(x=990, y=250)
